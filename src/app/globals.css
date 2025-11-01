@@ -83,3 +83,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .animate-shimmer {
+    background: linear-gradient(110deg, hsl(var(--primary)) 30%, hsl(var(--primary) / 0.8) 50%, hsl(var(--primary)) 70%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 5s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}

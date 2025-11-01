@@ -42,7 +42,7 @@ export default function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center gap-2 p-2">
-            <LogIn className="w-8 h-8 text-primary" />
+            <LogIn className="w-8 h-8 text-primary animate-shimmer" />
             <span className="text-lg font-semibold font-headline">CareHub</span>
         </div>
       </SidebarHeader>
