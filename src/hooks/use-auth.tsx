@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { User, onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Loader2 } from "lucide-react";
+import { useToast } from "./use-toast";
 
 type AuthContextType = {
   user: User | null;
@@ -24,6 +25,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -50,6 +52,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = async () => {
     await signOut(auth);
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out. Goodbye!",
+    });
   };
 
   const value = { user, isAdmin, loading, logout };
@@ -67,17 +73,24 @@ export const useRequireAuth = () => {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (loading) return;
-    
-    const isAuthPage = pathname === '/' || pathname === '/signup';
+    if (loading) {
+      return; // Don't do anything while loading.
+    }
 
+    const isAuthPage = pathname === "/" || pathname === "/signup";
+    
+    // If user is not logged in and is trying to access a protected page, redirect to login.
     if (!user && !isAuthPage) {
       router.push("/");
-    } else if (user && !isAdmin && !isAuthPage) {
-      // Logged in but not an admin, trying to access a protected page
+    }
+    
+    // If a logged-in user who is NOT an admin tries to access a protected page.
+    if (user && !isAdmin && !isAuthPage) {
       router.push("/");
-    } else if (user && isAdmin && isAuthPage) {
-      // Logged in admin on a public auth page
+    }
+
+    // If a logged-in admin lands on an auth page, redirect to dashboard.
+    if (user && isAdmin && isAuthPage) {
       router.push("/dashboard");
     }
 
@@ -87,8 +100,8 @@ export const useRequireAuth = () => {
 };
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { loading } = useRequireAuth();
-
+  const { loading, user } = useRequireAuth();
+  
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -96,6 +109,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+  
+  // Only render children if the user is authenticated
+  if (user) {
+    return <>{children}</>;
+  }
 
-  return <>{children}</>;
+  // While loading or if not a user, we show nothing or a loader, 
+  // the redirect is handled by the hook.
+  return null;
 }
