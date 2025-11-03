@@ -25,7 +25,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -52,10 +51,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = async () => {
     await signOut(auth);
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out. Goodbye!",
-    });
   };
 
   const value = { user, isAdmin, loading, logout };
@@ -67,7 +62,7 @@ export const useAuth = () => {
   return useContext(AuthContext);
 };
 
-export const useRequireAuth = () => {
+export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -77,31 +72,14 @@ export const useRequireAuth = () => {
       return; // Don't do anything while loading.
     }
 
-    const isAuthPage = pathname === "/" || pathname === "/signup";
-    
-    // If user is not logged in and is trying to access a protected page, redirect to login.
-    if (!user && !isAuthPage) {
+    // If loading is finished, check for user and admin status.
+    // If not an admin, redirect to login page.
+    if (!user || !isAdmin) {
       router.push("/");
     }
-    
-    // If a logged-in user who is NOT an admin tries to access a protected page.
-    if (user && !isAdmin && !isAuthPage) {
-      router.push("/");
-    }
-
-    // If a logged-in admin lands on an auth page, redirect to dashboard.
-    if (user && isAdmin && isAuthPage) {
-      router.push("/dashboard");
-    }
-
   }, [user, isAdmin, loading, router, pathname]);
 
-  return { user, isAdmin, loading };
-};
-
-export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { loading, user } = useRequireAuth();
-  
+  // While loading, show a spinner.
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -109,13 +87,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
-  // Only render children if the user is authenticated
-  if (user) {
+
+  // If loading is complete and user is an admin, show the children.
+  if (user && isAdmin) {
     return <>{children}</>;
   }
 
-  // While loading or if not a user, we show nothing or a loader, 
-  // the redirect is handled by the hook.
+  // Otherwise, render nothing while the redirect happens.
   return null;
 }

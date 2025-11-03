@@ -33,10 +33,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // The useAuth hook will detect the user and isAdmin status,
-      // and the AuthGuard will handle routing.
-      // We can optimistically redirect to the dashboard.
+      await signInWithEmailAndPassword(auth, email, password);
        toast({
         title: "Login Successful",
         description: "Welcome back! Redirecting to your dashboard.",
@@ -44,7 +41,6 @@ export default function LoginPage() {
       router.push("/dashboard");
 
     } catch (err: any) {
-      console.error(err);
       if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
         setError("Invalid email or password.");
       } else if (err.code === "auth/invalid-email") {
