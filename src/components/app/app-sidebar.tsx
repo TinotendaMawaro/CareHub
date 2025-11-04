@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -12,6 +11,7 @@ import {
   LineChart,
   ShieldAlert,
   Settings,
+  UserPlus,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/use-auth";
 
 const menuItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -35,8 +36,13 @@ const menuItems = [
   { href: "/dashboard/incidents", label: "Incidents", icon: ShieldAlert, badge: "2" },
 ];
 
+const adminMenuItems = [
+  { href: "/dashboard/create-user", label: "Create Admin", icon: UserPlus },
+];
+
 export default function AppSidebar() {
   const pathname = usePathname();
+  const { user } = useAuth(); // Since all authenticated users are admins
 
   return (
     <Sidebar collapsible="icon">
@@ -58,6 +64,19 @@ export default function AppSidebar() {
                   <item.icon className="h-5 w-5" />
                   <span>{item.label}</span>
                   {item.badge && <Badge className="ml-auto">{item.badge}</Badge>}
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          ))}
+          {user && adminMenuItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <Link href={item.href}>
+                <SidebarMenuButton
+                  isActive={pathname === item.href}
+                  tooltip={{ children: item.label }}
+                >
+                  <item.icon className="h-5 w-5" />
+                  <span>{item.label}</span>
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
