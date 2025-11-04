@@ -9,21 +9,18 @@ import { useToast } from "./use-toast";
 
 type AuthContextType = {
   user: User | null;
-  isAdmin: boolean;
   loading: boolean;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  isAdmin: false,
   loading: true,
   logout: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,17 +28,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       if (user) {
         setUser(user);
-        try {
-          const idTokenResult = await user.getIdTokenResult(true);
-          const userIsAdmin = idTokenResult.claims.role === "admin";
-          setIsAdmin(userIsAdmin);
-        } catch (err) {
-          console.error("Error fetching token claims:", err);
-          setIsAdmin(false);
-        }
       } else {
         setUser(null);
-        setIsAdmin(false);
       }
       setLoading(false);
     });
@@ -53,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await signOut(auth);
   };
 
-  const value = { user, isAdmin, loading, logout };
+  const value = { user, loading, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
@@ -63,7 +51,7 @@ export const useAuth = () => {
 };
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -72,12 +60,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return; // Don't do anything while loading.
     }
 
-    // If loading is finished, check for user and admin status.
-    // If not an admin, redirect to login page.
-    if (!user || !isAdmin) {
+    // If loading is finished, check for user authentication.
+    // Since only admins can access the web app, any authenticated user is an admin.
+    if (!user) {
       router.push("/");
     }
-  }, [user, isAdmin, loading, router, pathname]);
+  }, [user, loading, router, pathname]);
 
   // While loading, show a spinner.
   if (loading) {
@@ -88,8 +76,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If loading is complete and user is an admin, show the children.
-  if (user && isAdmin) {
+  // If loading is complete and user is authenticated, show the children.
+  if (user) {
     return <>{children}</>;
   }
 
