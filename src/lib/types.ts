@@ -38,3 +38,13 @@ export type IncidentReport = {
   description: string;
   severity: 'Low' | 'Medium' | 'High';
 };
+
+export type Notification = {
+  id: string;
+  title: string;
+  message: string;
+  type: 'shift' | 'incident' | 'report' | 'note';
+  timestamp: Date;
+  read: boolean;
+  data?: any; // Additional data related to the notification
+};
