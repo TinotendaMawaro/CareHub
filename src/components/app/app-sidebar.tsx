@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LogIn,
   LayoutDashboard,
   Users,
   HeartHandshake,
@@ -12,6 +11,8 @@ import {
   ShieldAlert,
   Settings,
   UserPlus,
+  FileText,
+  LogOut,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
 
 const menuItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -34,6 +36,7 @@ const menuItems = [
   { href: "/dashboard/scheduling", label: "Scheduling", icon: CalendarDays },
   { href: "/dashboard/reports", label: "Reports", icon: LineChart },
   { href: "/dashboard/incidents", label: "Incidents", icon: ShieldAlert, badge: "2" },
+  { href: "/dashboard/shift-note", label: "Shift Note", icon: FileText },
 ];
 
 const adminMenuItems = [
@@ -42,14 +45,14 @@ const adminMenuItems = [
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { user } = useAuth(); // Since all authenticated users are admins
+  const { user, logout } = useAuth(); // Since all authenticated users are admins
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center gap-2 p-2">
-            <LogIn className="w-8 h-8 text-primary animate-shimmer" />
-            <span className="text-lg font-semibold font-headline">CareHub</span>
+          <HeartHandshake className="w-8 h-8 text-primary animate-shimmer" />
+          <span className="text-lg font-semibold font-headline">CareHub</span>
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
@@ -89,6 +92,12 @@ export default function AppSidebar() {
                 <SidebarMenuButton tooltip={{ children: "Settings" }}>
                     <Settings className="h-5 w-5" />
                     <span>Settings</span>
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+                <SidebarMenuButton tooltip={{ children: "Logout" }} onClick={logout}>
+                    <LogOut className="h-5 w-5" />
+                    <span>Logout</span>
                 </SidebarMenuButton>
             </SidebarMenuItem>
         </SidebarMenu>
