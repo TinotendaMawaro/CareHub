@@ -12,6 +12,12 @@ const VAPID_KEY = 'BF2Bw1LNL00JeWuJw1PgWP2B0TgPbdeCAOb0TevwfJStWLxYNAPLMpbA2heDS
 // Request notification permission and get token
 export const requestNotificationPermission = async (): Promise<string | null> => {
   try {
+    // Check if messaging is available (client-side only)
+    if (!messaging) {
+      console.warn('Firebase messaging is not available (likely server-side)');
+      return null;
+    }
+
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });

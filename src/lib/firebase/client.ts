@@ -3,6 +3,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,6 +20,9 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const storage = getStorage(app);
-const messaging = getMessaging(app);
+const db = getFirestore(app);
 
-export { app, auth, storage, messaging };
+// Initialize messaging only on client-side to avoid SSR issues
+const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+
+export { app, auth, storage, db, messaging };
