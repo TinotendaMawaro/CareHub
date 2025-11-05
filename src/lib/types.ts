@@ -7,6 +7,14 @@ export type Client = {
   careNeeds: string[];
   assignedCaregiverId?: string;
   avatarUrl: string;
+  fullName: string;
+  dateOfBirth: string;
+  email: string;
+  phone: string;
+  emergencyContact: string;
+  diagnosis: string;
+  notes: string;
+  assignedCaregiver: string;
 };
 
 export type Caregiver = {

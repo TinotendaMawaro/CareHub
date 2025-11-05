@@ -1,30 +1,32 @@
-# TODO: Implement Push Notifications for CareHub Admin Portal
+# Clients Page Implementation TODO
 
-## Tasks
-- [ ] Set up FCM Client:
-  - [ ] Add `getMessaging` import and export in `src/lib/firebase/client.ts`
-  - [ ] Create `public/firebase-messaging-sw.js` service worker
-  - [ ] Add VAPID key configuration (BF2Bw1LNL00JeWuJw1PgWP2B0TgPbdeCAOb0TevwfJStWLxYNAPLMpbA2heDS3vvY7hBewCaoPh6H_VT0Meb2F4)
+## 1. Update Client Type ✅
+- Modify `src/lib/types.ts` to include new fields: fullName, dateOfBirth, email, phone, emergencyContact, diagnosis, notes, assignedCaregiver
 
-- [ ] Create Notification Service:
-  - [ ] New file: `src/lib/notifications.ts` for sending notifications via admin SDK
-  - [ ] New hook: `src/hooks/use-notifications.tsx` for managing notification state
+## 2. Initialize Firestore ✅
+- Add Firestore initialization to `src/lib/firebase/client.ts`
 
-- [ ] Implement Event Listeners:
-  - [ ] Add Firestore listeners for shift status changes (accept/decline, start/complete)
-  - [ ] Listen for new incident reports
-  - [ ] Monitor shift notes updates
-  - [ ] Monitor reports analysis updates
+## 3. Create Clients Hook ✅
+- Create `src/hooks/use-clients.tsx` for CRUD operations (fetch, add, update, delete) using Firestore under `clients/{clientId}`
 
-- [ ] Update UI Components:
-  - [ ] Modify `src/components/app/app-header.tsx` to show real notification count
-  - [ ] Create notification dropdown component
-  - [ ] Add permission request handling
+## 4. Update Clients Page ✅
+- Modify `src/app/dashboard/clients/page.tsx` to use the hook, add sorting/searching, integrate modal
 
-- [ ] Add Notification Types:
-  - [ ] Update `src/lib/types.ts` with notification interfaces
+## 5. Enhance Client Table ✅
+- Update `src/app/dashboard/clients/client-table.tsx` with sorting/searching and connect actions
 
-- [ ] Testing:
-  - [ ] Test notification permissions
-  - [ ] Verify service worker registration
-  - [ ] Test each notification trigger event (caregiver accept/decline, shift started/completed, incident logged, shift notes, reports analysis)
+## 6. Create Client Modal ✅
+- Create `src/components/clients/client-modal.tsx` for Add/Edit form with validation
+
+## 7. Implement Delete Confirmation ✅
+- Add confirmation dialog for delete action
+
+## 8. Add Profile Picture Upload
+- Add file upload functionality to client modal for profile pictures
+
+## 9. Create Client Details Modal
+- Create a detailed view modal showing all client information
+
+## 10. Add View Schedule Functionality
+- Add button to view shifts/schedule for a specific client
+- Create schedule view component
