@@ -14,15 +14,34 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
+import { useAuth } from './use-auth';
 import type { Client } from '@/lib/types';
 
 export function useClients() {
+  const { user, role } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'clients'), orderBy('fullName'));
+    if (!user || !role) {
+      setLoading(false);
+      return;
+    }
+
+    let q;
+    if (role === 'admin') {
+      q = query(collection(db, 'clients'), orderBy('fullName'));
+    } else if (role === 'caregiver') {
+      q = query(collection(db, 'clients'), where('assignedCaregiverId', '==', user.uid), orderBy('fullName'));
+    } else if (role === 'parent') {
+      q = query(collection(db, 'clients'), where('parentId', '==', user.uid), orderBy('fullName'));
+    } else {
+      setError('Unauthorized role');
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const clientsData: Client[] = [];
       querySnapshot.forEach((doc) => {
@@ -30,13 +49,14 @@ export function useClients() {
       });
       setClients(clientsData);
       setLoading(false);
+      setError(null);
     }, (err) => {
       setError(err.message);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user, role]);
 
   const addClient = async (clientData: Omit<Client, 'id'>) => {
     try {

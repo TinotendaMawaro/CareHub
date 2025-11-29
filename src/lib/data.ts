@@ -20,17 +20,17 @@ export const caregivers: Caregiver[] = [
 ];
 
 export const shifts: Shift[] = [
-  { id: 'sh-001', clientId: 'cli-001', caregiverId: 'car-001', date: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '17:00', status: 'In Progress' },
-  { id: 'sh-002', clientId: 'cli-002', caregiverId: 'car-002', date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '10:00', endTime: '14:00', status: 'Upcoming' },
-  { id: 'sh-003', clientId: 'cli-003', caregiverId: 'car-003', date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '08:00', endTime: '12:00', status: 'Completed' },
+  { id: 'sh-001', clientId: 'cli-001', caregiverId: 'car-001', date: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '17:00', status: 'Accepted' },
+  { id: 'sh-002', clientId: 'cli-002', caregiverId: 'car-002', date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '10:00', endTime: '14:00', status: 'Pending' },
+  { id: 'sh-003', clientId: 'cli-003', caregiverId: 'car-003', date: new Date(Date.now() - 1 * 24 * 60 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '08:00', endTime: '12:00', status: 'Completed' },
   { id: 'sh-004', clientId: 'cli-004', caregiverId: 'car-004', date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '13:00', endTime: '18:00', status: 'Completed' },
-  { id: 'sh-005', clientId: 'cli-001', caregiverId: 'car-001', date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '09:00', endTime: '17:00', status: 'Upcoming' },
+  { id: 'sh-005', clientId: 'cli-001', caregiverId: 'car-001', date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], startTime: '09:00', endTime: '17:00', status: 'Pending' },
 ];
 
 export const incidentReports: IncidentReport[] = [
-  { id: 'inc-001', clientId: 'cli-001', caregiverId: 'car-001', date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '10:30', description: 'Client had a minor fall in the living room. No visible injuries, but seemed shaken. Monitored for the rest of the shift.', severity: 'Low' },
-  { id: 'inc-002', clientId: 'cli-004', caregiverId: 'car-004', date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '15:00', description: 'Client experienced a moment of confusion and agitation, refusing medication. Was able to de-escalate the situation after 15 minutes.', severity: 'Medium' },
-  { id: 'inc-003', clientId: 'cli-002', caregiverId: 'car-002', date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '11:00', description: 'Kitchen smoke alarm went off due to burnt toast. No fire or damage. Client was not in the room.', severity: 'Low' },
+  { id: 'inc-001', clientId: 'cli-001', caregiverId: 'car-001', date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '10:30', description: 'Client had a minor fall in the living room. No visible injuries, but seemed shaken. Monitored for the rest of the shift.', severity: 'Low', status: 'Unresolved' },
+  { id: 'inc-002', clientId: 'cli-004', caregiverId: 'car-004', date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '15:00', description: 'Client experienced a moment of confusion and agitation, refusing medication. Was able to de-escalate the situation after 15 minutes.', severity: 'Medium', status: 'Resolved' },
+  { id: 'inc-003', clientId: 'cli-002', caregiverId: 'car-002', date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], time: '11:00', description: 'Kitchen smoke alarm went off due to burnt toast. No fire or damage. Client was not in the room.', severity: 'Low', status: 'Resolved' },
 ];
 
 export const getClientName = (clientId: string) => clients.find(c => c.id === clientId)?.name || 'Unknown Client';

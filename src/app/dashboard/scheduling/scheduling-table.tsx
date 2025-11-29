@@ -22,18 +22,25 @@ import {
 import type { Shift } from "@/lib/types";
 import { getClientName, getCaregiverName } from "@/lib/data";
 
-export default function SchedulingTable({ shifts }: { shifts: Shift[] }) {
+interface SchedulingTableProps {
+  shifts: Shift[];
+  onEdit: (shift: Shift) => void;
+  onDelete: (shift: Shift) => void;
+  onStart: (shift: Shift) => void;
+}
+
+export default function SchedulingTable({ shifts, onEdit, onDelete, onStart }: SchedulingTableProps) {
 
   const getStatusBadge = (status: Shift['status']) => {
     switch (status) {
-      case 'Upcoming':
-        return <Badge variant="outline">Upcoming</Badge>;
+      case 'Pending':
+        return <Badge variant="outline">Pending</Badge>;
+      case 'Accepted':
+        return <Badge>Accepted</Badge>;
       case 'In Progress':
-        return <Badge>In Progress</Badge>;
+        return <Badge variant="default">In Progress</Badge>;
       case 'Completed':
         return <Badge variant="secondary">Completed</Badge>;
-      case 'Cancelled':
-        return <Badge variant="destructive">Cancelled</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -56,8 +63,8 @@ export default function SchedulingTable({ shifts }: { shifts: Shift[] }) {
       <TableBody>
         {shifts.map((shift) => (
           <TableRow key={shift.id}>
-            <TableCell className="font-medium">{getClientName(shift.clientId)}</TableCell>
-            <TableCell>{getCaregiverName(shift.caregiverId)}</TableCell>
+            <TableCell className="font-medium">{shift.clientName || getClientName(shift.clientId)}</TableCell>
+            <TableCell>{shift.caregiverName || getCaregiverName(shift.caregiverId)}</TableCell>
             <TableCell>{format(new Date(shift.date), 'MMMM d, yyyy')}</TableCell>
             <TableCell className="hidden md:table-cell">{shift.startTime} - {shift.endTime}</TableCell>
             <TableCell>{getStatusBadge(shift.status)}</TableCell>
@@ -71,10 +78,12 @@ export default function SchedulingTable({ shifts }: { shifts: Shift[] }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                  <DropdownMenuItem>Edit Shift</DropdownMenuItem>
-                  <DropdownMenuItem>Reassign Caregiver</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive">
-                    Cancel Shift
+                  {(shift.status === 'Pending' || shift.status === 'Accepted') && (
+                    <DropdownMenuItem onClick={() => onStart(shift)}>Start Shift</DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => onEdit(shift)}>Edit Shift</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDelete(shift)} className="text-destructive">
+                    Delete Shift
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -7,9 +9,18 @@ import {
 } from "@/components/ui/card";
 import CaregiverHoursChart from "./caregiver-hours-chart";
 import IncidentSummary from "./incident-summary";
-import { incidentReports } from "@/lib/data";
+import { useIncidents } from "@/hooks/use-incidents";
 
 export default function ReportsPage() {
+  const { incidents, loading } = useIncidents();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg">Loading reports...</div>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -35,7 +46,7 @@ export default function ReportsPage() {
           </Card>
         </div>
         <div className="lg:col-span-2">
-            <IncidentSummary reports={incidentReports} />
+            <IncidentSummary reports={incidents} />
         </div>
       </div>
     </div>
