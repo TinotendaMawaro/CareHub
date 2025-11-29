@@ -1,32 +1,29 @@
-# Clients Page Implementation TODO
+# TODO: Enhance Scheduling Page
 
-## 1. Update Client Type ✅
-- Modify `src/lib/types.ts` to include new fields: fullName, dateOfBirth, email, phone, emergencyContact, diagnosis, notes, assignedCaregiver
+## 1. Create Shift Modal Component
+- Create `src/components/shifts/shift-modal.tsx` for creating/editing shifts.
+- Include form fields: client (dropdown), caregiver (dropdown), date, startTime, endTime, status.
+- Use react-hook-form and zod for validation.
+- Handle create and edit modes.
 
-## 2. Initialize Firestore ✅
-- Add Firestore initialization to `src/lib/firebase/client.ts`
+## 2. Update Scheduling Page
+- Modify `src/app/dashboard/scheduling/page.tsx` to include calendar view using react-big-calendar.
+- Add tabs for List and Calendar views.
+- Integrate the shift modal on "Add Shift" button and edit actions.
 
-## 3. Create Clients Hook ✅
-- Create `src/hooks/use-clients.tsx` for CRUD operations (fetch, add, update, delete) using Firestore under `clients/{clientId}`
+## 3. Update Scheduling Table
+- Modify `src/app/dashboard/scheduling/scheduling-table.tsx` to handle edit and delete actions.
+- Connect edit to open modal, delete to call deleteShift.
 
-## 4. Update Clients Page ✅
-- Modify `src/app/dashboard/clients/page.tsx` to use the hook, add sorting/searching, integrate modal
+## 4. Integrate with Hooks
+- Ensure use-shifts is used in the page instead of static data.
+- Update use-clients and use-caregivers for dropdowns.
 
-## 5. Enhance Client Table ✅
-- Update `src/app/dashboard/clients/client-table.tsx` with sorting/searching and connect actions
+## 5. Add Cloud Function for Notifications
+- Create Firebase Cloud Function in `functions/` to send push notifications when shift is assigned.
+- Trigger on shift creation/update.
 
-## 6. Create Client Modal ✅
-- Create `src/components/clients/client-modal.tsx` for Add/Edit form with validation
-
-## 7. Implement Delete Confirmation ✅
-- Add confirmation dialog for delete action
-
-## 8. Add Profile Picture Upload
-- Add file upload functionality to client modal for profile pictures
-
-## 9. Create Client Details Modal
-- Create a detailed view modal showing all client information
-
-## 10. Add View Schedule Functionality
-- Add button to view shifts/schedule for a specific client
-- Create schedule view component
+## 6. Test and Verify
+- Test creating, editing, deleting shifts.
+- Verify calendar view displays shifts.
+- Check notifications are sent.

@@ -2,25 +2,28 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { User, onAuthStateChanged, signOut } from "firebase/auth";
+import { User, onAuthStateChanged, signOut, getIdTokenResult } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Loader2 } from "lucide-react";
 import { useToast } from "./use-toast";
 
 type AuthContextType = {
   user: User | null;
+  role: string | null;
   loading: boolean;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  role: null,
   loading: true,
   logout: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,8 +31,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       if (user) {
         setUser(user);
+        // Fetch the ID token to get custom claims (role)
+        try {
+          const idTokenResult = await getIdTokenResult(user);
+          setRole(idTokenResult.claims.role as string || null);
+        } catch (error) {
+          console.error('Error fetching ID token:', error);
+          setRole(null);
+        }
       } else {
         setUser(null);
+        setRole(null);
       }
       setLoading(false);
     });
@@ -41,7 +53,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await signOut(auth);
   };
 
-  const value = { user, loading, logout };
+  const value = { user, role, loading, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

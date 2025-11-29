@@ -20,11 +20,14 @@ export type Client = {
 export type Caregiver = {
   id: string;
   name: string;
+  email: string;
+  phone: string;
+  qualifications: string[];
   experience: number; // years
   skills: string[];
   availability: 'Available' | 'Unavailable' | 'On Shift';
-  contact: string;
-  avatarUrl: string;
+  profilePictureUrl?: string;
+  fcmToken?: string;
 };
 
 export type Shift = {
@@ -34,7 +37,9 @@ export type Shift = {
   date: string;
   startTime: string;
   endTime: string;
-  status: 'Upcoming' | 'Completed' | 'In Progress' | 'Cancelled';
+  status: 'Pending' | 'Accepted' | 'In Progress' | 'Completed';
+  clientName?: string;
+  caregiverName?: string;
 };
 
 export type IncidentReport = {
@@ -45,6 +50,16 @@ export type IncidentReport = {
   time: string;
   description: string;
   severity: 'Low' | 'Medium' | 'High';
+  status: 'Resolved' | 'Unresolved';
+};
+
+export type ShiftNote = {
+  id: string;
+  caregiverId: string;
+  clientId: string;
+  note: string;
+  timestamp: Date;
+  status: 'Open' | 'Resolved' | 'Closed' | 'Unresolved';
 };
 
 export type Notification = {
