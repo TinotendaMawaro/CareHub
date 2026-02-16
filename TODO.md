@@ -1,29 +1,33 @@
-# TODO: Enhance Scheduling Page
+# CareHub Phase 1: Core Infrastructure & EVV System - Data Models Enhancement
 
-## 1. Create Shift Modal Component
-- Create `src/components/shifts/shift-modal.tsx` for creating/editing shifts.
-- Include form fields: client (dropdown), caregiver (dropdown), date, startTime, endTime, status.
-- Use react-hook-form and zod for validation.
-- Handle create and edit modes.
+## Current Task: Enhance Data Models with Missing Fields
 
-## 2. Update Scheduling Page
-- Modify `src/app/dashboard/scheduling/page.tsx` to include calendar view using react-big-calendar.
-- Add tabs for List and Calendar views.
-- Integrate the shift modal on "Add Shift" button and edit actions.
+### Completed Tasks
+- [x] Analyze current types.ts and identify missing models
+- [x] Create implementation plan for new data types
+- [x] Get user approval for plan
 
-## 3. Update Scheduling Table
-- Modify `src/app/dashboard/scheduling/scheduling-table.tsx` to handle edit and delete actions.
-- Connect edit to open modal, delete to call deleteShift.
+### Pending Tasks
+- [x] Add new TypeScript interfaces to src/lib/types.ts:
+  - [x] Expense: Track travel, supplies, etc. (amount, category, date, caregiverId, clientId)
+  - [x] Mileage: Track vehicle usage (start/end locations, distance, date, caregiverId)
+  - [x] CarePlan: Client care plans (goals, tasks, frequency, assigned caregivers)
+  - [x] Assessment: Client assessments (type, date, results, notes)
+  - [x] Billing: Invoices (clientId, amount, services, status, dueDate)
+  - [x] Payroll: Caregiver payroll (hours, rate, deductions, period)
+  - [x] Form: Generic forms for documentation (fields, responses, status)
+- [ ] Create hooks for new data types (use-expenses.tsx, use-mileage.tsx, etc.)
+  - [ ] Create use-assessment.tsx hook
+  - [ ] Create use-payroll.tsx hook
+- [ ] Update Firestore rules for new collections
+- [ ] Implement components to display/manage these new data types
+- [ ] Integrate into existing pages (add expense tracking to shifts)
 
-## 4. Integrate with Hooks
-- Ensure use-shifts is used in the page instead of static data.
-- Update use-clients and use-caregivers for dropdowns.
-
-## 5. Add Cloud Function for Notifications
-- Create Firebase Cloud Function in `functions/` to send push notifications when shift is assigned.
-- Trigger on shift creation/update.
-
-## 6. Test and Verify
-- Test creating, editing, deleting shifts.
-- Verify calendar view displays shifts.
-- Check notifications are sent.
+### Next Phase Tasks (After Data Models)
+- [ ] Implement real geolocation API integration for live location tracking
+- [ ] Add location history and compliance monitoring logic
+- [ ] Create comprehensive EVV compliance dashboard
+- [ ] Add location-based alerts and notifications system
+- [ ] Implement real-time notifications with FCM push notifications
+- [ ] Integrate actual map service (Google Maps/Mapbox) in EVV components
+- [ ] Add real-time updates throughout the app
