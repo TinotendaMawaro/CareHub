@@ -18,11 +18,23 @@ export function useShifts() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const shiftsData = querySnapshot.docs.map(doc => {
         const data = doc.data();
-        const client = clients.find(c => c.id === data.clientId);
-        const caregiver = caregivers.find(c => c.id === data.caregiverId);
+        // Convert any Firebase Timestamps to strings
+        const processedData = Object.keys(data).reduce((acc, key) => {
+          const value = data[key];
+          if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
+            acc[key] = value.toDate().toISOString();
+          } else {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as any);
+        const client = clients.find(c => c.id === processedData.clientId);
+        const caregiver = caregivers.find(c => c.id === processedData.caregiverId);
         return {
           id: doc.id,
-          ...data,
+          shiftId: doc.id,
+          ...processedData,
+          date: processedData.date?.split('T')[0] || processedData.date,
           clientName: client?.name || 'Unknown Client',
           caregiverName: caregiver?.name || 'Unknown Caregiver',
         } as Shift;
@@ -34,7 +46,7 @@ export function useShifts() {
     return () => unsubscribe();
   }, [clients, caregivers]);
 
-  const createShift = async (shiftData: Omit<Shift, 'id'>) => {
+  const createShift = async (shiftData: Omit<Shift, 'shiftId' | 'clientName' | 'caregiverName'>) => {
     try {
       const docRef = await addDoc(collection(db, 'shifts'), shiftData);
       return docRef.id;
@@ -62,6 +74,45 @@ export function useShifts() {
       throw error;
     }
   };
+
+  // Automatic status updates based on time and clock events
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      shifts.forEach(async (shift) => {
+        if (shift.status === 'Completed' || shift.status === 'Cancelled') return;
+
+        let newStatus: Shift['status'] | null = null;
+
+        if (shift.clockOutTime) {
+          // If clockOutTime exists → Completed
+          newStatus = 'Completed';
+        } else if (shift.clockInTime) {
+          // If clockInTime exists → In Progress
+          newStatus = 'In Progress';
+        } else if (now >= shift.endTime) {
+          // If no clockInTime and now > endTime → No Show
+          newStatus = 'No Show';
+        } else if (now >= shift.startTime) {
+          // If now >= startTime AND no clockInTime → Late
+          newStatus = 'Late';
+        } else {
+          // If now < startTime → Scheduled
+          newStatus = 'Scheduled';
+        }
+
+        if (newStatus && newStatus !== shift.status) {
+          try {
+            await updateShift(shift.shiftId, { status: newStatus });
+          } catch (error) {
+            console.error('Error updating shift status automatically:', error);
+          }
+        }
+      });
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [shifts, updateShift]);
 
   return {
     shifts,

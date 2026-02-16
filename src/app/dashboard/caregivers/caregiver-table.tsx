@@ -46,6 +46,7 @@ export default function CaregiverTable({
   caregivers,
   clients,
   onEdit,
+  onViewProfile,
   onDelete,
   onAssignToClient
 }: CaregiverTableProps) {
@@ -130,6 +131,9 @@ export default function CaregiverTable({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => onViewProfile(caregiver)}>
+                      View Profile
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(caregiver)}>
                       Edit Caregiver
                     </DropdownMenuItem>

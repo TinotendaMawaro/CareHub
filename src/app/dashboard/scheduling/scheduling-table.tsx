@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Shift } from "@/lib/types";
-import { getClientName, getCaregiverName } from "@/lib/data";
+import { getClientName } from "@/lib/data";
 
 interface SchedulingTableProps {
   shifts: Shift[];
@@ -41,6 +41,8 @@ export default function SchedulingTable({ shifts, onEdit, onDelete, onStart }: S
         return <Badge variant="default">In Progress</Badge>;
       case 'Completed':
         return <Badge variant="secondary">Completed</Badge>;
+      case 'Overdue':
+        return <Badge variant="destructive">Overdue</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }

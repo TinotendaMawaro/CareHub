@@ -20,6 +20,8 @@ export default function CaregiversPage() {
   const { caregivers, loading: caregiversLoading, addCaregiver, updateCaregiver, deleteCaregiver } = useCaregivers();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCaregiver, setEditingCaregiver] = useState<Caregiver | null>(null);
+  const [viewingCaregiver, setViewingCaregiver] = useState<Caregiver | null>(null);
+  const [isViewMode, setIsViewMode] = useState(false);
 
   const handleAddCaregiver = () => {
     setEditingCaregiver(null);
@@ -28,6 +30,12 @@ export default function CaregiversPage() {
 
   const handleEditCaregiver = (caregiver: Caregiver) => {
     setEditingCaregiver(caregiver);
+    setIsModalOpen(true);
+  };
+
+  const handleViewProfile = (caregiver: Caregiver) => {
+    setViewingCaregiver(caregiver);
+    setIsViewMode(true);
     setIsModalOpen(true);
   };
 
@@ -94,6 +102,7 @@ export default function CaregiversPage() {
           <CaregiverTable
             caregivers={caregivers}
             onEdit={handleEditCaregiver}
+            onViewProfile={handleViewProfile}
             onDelete={handleDeleteCaregiver}
           />
         </CardContent>
@@ -101,10 +110,15 @@ export default function CaregiversPage() {
 
       <CaregiverModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setIsViewMode(false);
+          setViewingCaregiver(null);
+        }}
         onSubmit={handleModalSubmit}
-        caregiver={editingCaregiver}
+        caregiver={isViewMode ? viewingCaregiver : editingCaregiver}
         loading={caregiversLoading}
+        isViewMode={isViewMode}
       />
     </div>
   );

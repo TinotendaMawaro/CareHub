@@ -32,7 +32,14 @@ export function useCaregivers() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const caregiversData: Caregiver[] = [];
       querySnapshot.forEach((doc) => {
-        caregiversData.push({ id: doc.id, ...doc.data() } as Caregiver);
+        const data = doc.data();
+        // Convert Firebase Timestamps to strings if any
+        const processedData = {
+          ...data,
+          // Ensure profilePictureUrl is string
+          profilePictureUrl: typeof data.profilePictureUrl === 'string' ? data.profilePictureUrl : undefined,
+        };
+        caregiversData.push({ id: doc.id, ...processedData } as Caregiver);
       });
       setCaregivers(caregiversData);
       setLoading(false);

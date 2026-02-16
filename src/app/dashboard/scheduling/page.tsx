@@ -158,14 +158,18 @@ export default function SchedulingPage() {
                               <div className="flex items-center gap-2">
                                 {(() => {
                                   switch (shift.status) {
-                                    case 'Pending':
-                                      return <Badge variant="outline">Pending</Badge>;
-                                    case 'Accepted':
-                                      return <Badge>Accepted</Badge>;
+                                    case 'Scheduled':
+                                      return <Badge variant="outline">Scheduled</Badge>;
                                     case 'In Progress':
                                       return <Badge variant="default">In Progress</Badge>;
                                     case 'Completed':
                                       return <Badge variant="secondary">Completed</Badge>;
+                                    case 'Late':
+                                      return <Badge variant="destructive">Late</Badge>;
+                                    case 'No Show':
+                                      return <Badge variant="destructive">No Show</Badge>;
+                                    case 'Cancelled':
+                                      return <Badge variant="secondary">Cancelled</Badge>;
                                     default:
                                       return <Badge variant="secondary">{shift.status}</Badge>;
                                   }
@@ -179,7 +183,7 @@ export default function SchedulingPage() {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                    {(shift.status === 'Pending' || shift.status === 'Accepted') && (
+                                    {(shift.status === 'Scheduled' || shift.status === 'Late') && (
                                       <DropdownMenuItem onClick={() => handleStartShift(shift)}>Start Shift</DropdownMenuItem>
                                     )}
                                     <DropdownMenuItem onClick={() => handleEditShift(shift)}>Edit Shift</DropdownMenuItem>

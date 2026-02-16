@@ -32,7 +32,31 @@ export function useIncidents() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const incidentsData: IncidentReport[] = [];
       querySnapshot.forEach((doc) => {
-        incidentsData.push({ id: doc.id, ...doc.data() } as IncidentReport);
+        const data = doc.data();
+        // Convert any Firebase Timestamps to strings
+        const processedData = Object.keys(data).reduce((acc, key) => {
+          const value = data[key];
+          if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
+            acc[key] = value.toDate().toISOString();
+          } else {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as any);
+        incidentsData.push({
+          id: doc.id,
+          clientId: processedData.clientId,
+          caregiverId: processedData.caregiverId,
+          date: processedData.date,
+          time: processedData.time?.split('T')[1]?.substring(0, 5) || processedData.time,
+          description: processedData.description,
+          incidentType: processedData.incidentType,
+          status: processedData.status,
+          actionsTaken: processedData.actionsTaken,
+          involvedParties: processedData.involvedParties,
+          photoUrls: processedData.photoUrls,
+          name: processedData.name,
+        } as IncidentReport);
       });
       setIncidents(incidentsData);
       setLoading(false);

@@ -85,6 +85,10 @@ export const listenForShiftChanges = (callback: (notification: Notification) => 
               title = 'Shift Cancelled';
               message = `Shift with ${shift.clientId} has been cancelled`;
               break;
+            case 'Overdue':
+              title = 'Shift Overdue';
+              message = `Shift with ${shift.clientId} is overdue and requires attention`;
+              break;
           }
 
           if (title && message) {

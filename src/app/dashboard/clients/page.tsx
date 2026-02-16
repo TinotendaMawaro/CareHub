@@ -11,15 +11,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import ClientTable from "./client-table";
 import ClientModal from "@/components/clients/client-modal";
 import ClientDetailsModal from "@/components/clients/client-details-modal";
 import ClientScheduleModal from "@/components/clients/client-schedule-modal";
 import { useClients } from "@/hooks/use-clients";
+import { useCaregivers } from "@/hooks/use-caregivers";
 import type { Client } from "@/lib/types";
 
 export default function ClientsPage() {
-  const { clients, loading, addClient, updateClient, deleteClient } = useClients();
+  const { clients, loading, error, success, addClient, updateClient, deleteClient } = useClients();
+  const { caregivers } = useCaregivers();
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "age" | "assignedCaregiver">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -45,12 +48,12 @@ export default function ClientsPage() {
           bValue = b.fullName.toLowerCase();
           break;
         case "age":
-          aValue = a.age;
-          bValue = b.age;
+          aValue = new Date().getFullYear() - new Date(a.dateOfBirth).getFullYear();
+          bValue = new Date().getFullYear() - new Date(b.dateOfBirth).getFullYear();
           break;
         case "assignedCaregiver":
-          aValue = a.assignedCaregiver.toLowerCase();
-          bValue = b.assignedCaregiver.toLowerCase();
+          aValue = a.assignedCaregivers.join(', ').toLowerCase();
+          bValue = b.assignedCaregivers.join(', ').toLowerCase();
           break;
         default:
           return 0;
@@ -63,13 +66,23 @@ export default function ClientsPage() {
 
   const handleAddClient = async (data: any) => {
     const clientData = {
-      ...data,
-      name: data.fullName,
-      age: new Date().getFullYear() - new Date(data.dateOfBirth).getFullYear(),
-      contact: data.phone,
-      careNeeds: [data.diagnosis],
-      assignedCaregiverId: "", // Will be set based on caregiver name
-      avatarUrl: data.avatarUrl || `https://picsum.photos/seed/${data.fullName}/100/100`,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      dateOfBirth: data.dateOfBirth,
+      diagnosis: data.diagnosis,
+      allergies: data.allergies ? data.allergies.split(',').map((s: string) => s.trim()) : [],
+      carePlan: data.carePlan,
+      notes: data.notes,
+      emergencyContact: data.emergencyContact,
+      address: data.address,
+      assignedCaregivers: data.assignedCaregivers ? data.assignedCaregivers.split(',').map((s: string) => s.trim()) : [],
+      preferredCaregivers: data.preferredCaregivers ? data.preferredCaregivers.split(',').map((s: string) => s.trim()) : [],
+      profilePictureUrl: data.avatarUrl || `https://picsum.photos/seed/${data.firstName}${data.lastName}/100/100`,
+      location: { latitude: 0, longitude: 0 }, // Default location, should be updated with actual coordinates
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: data.status,
     };
     await addClient(clientData);
   };
@@ -77,13 +90,22 @@ export default function ClientsPage() {
   const handleEditClient = async (data: any) => {
     if (!editingClient) return;
     const clientData = {
-      ...data,
-      name: data.fullName,
-      age: new Date().getFullYear() - new Date(data.dateOfBirth).getFullYear(),
-      contact: data.phone,
-      careNeeds: [data.diagnosis],
-      assignedCaregiverId: "", // Will be set based on caregiver name
-      avatarUrl: data.avatarUrl || editingClient.avatarUrl,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      dateOfBirth: data.dateOfBirth,
+      diagnosis: data.diagnosis,
+      allergies: data.allergies ? data.allergies.split(',').map((s: string) => s.trim()) : [],
+      carePlan: data.carePlan,
+      notes: data.notes,
+      emergencyContact: data.emergencyContact,
+      address: data.address,
+      assignedCaregivers: data.assignedCaregivers ? data.assignedCaregivers.split(',').map((s: string) => s.trim()) : [],
+      preferredCaregivers: data.preferredCaregivers ? data.preferredCaregivers.split(',').map((s: string) => s.trim()) : [],
+      profilePictureUrl: data.avatarUrl || editingClient.profilePictureUrl,
+      location: editingClient.location, // Keep existing location
+      updatedAt: new Date(),
+      status: data.status,
     };
     await updateClient(editingClient.id, clientData);
   };
@@ -123,6 +145,18 @@ export default function ClientsPage() {
           <PlusCircle className="mr-2 h-4 w-4" /> Add Client
         </Button>
       </div>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <Alert className="mb-4 bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800">{success}</AlertDescription>
+        </Alert>
+      )}
+      {error && (
+        <Alert className="mb-4 bg-red-50 border-red-200">
+          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -179,6 +213,7 @@ export default function ClientsPage() {
         onClose={() => setIsModalOpen(false)}
         onSubmit={editingClient ? handleEditClient : handleAddClient}
         client={editingClient}
+        loading={loading}
       />
 
       <ClientDetailsModal
