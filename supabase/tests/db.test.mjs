@@ -97,6 +97,17 @@ describe('security / RLS', () => {
     const pub = await as(db, null, async () => (await db.query('select * from public.organisation_public')).rows[0]);
     assert.deepEqual([pub.name, pub.brand_color, pub.logo_url], ['Bright Care', '#112233', 'https://x/logo.png']);
   });
+
+  test('2FA status: office sees who has it on, workers see nothing, unverified factors do not count', async () => {
+    await db.exec(`insert into auth.mfa_factors (user_id, status) values ('${U.w1}','verified'),('${U.w2}','unverified')`);
+    const office = await as(db, U.office, async () => (await db.query('select * from public.mfa_enabled_users() u')).rows.map((r) => r.u));
+    assert.deepEqual(office, [U.w1]);
+    const worker = await as(db, U.w1, async () => (await db.query('select * from public.mfa_enabled_users()')).rows);
+    assert.equal(worker.length, 0);
+    await rejects(as(db, null, () => db.query('select public.mfa_enabled_users()')), /permission denied/);
+    assert.equal((await one(`select require_mfa from public.organisation`)).require_mfa, false);
+    await db.exec(`delete from auth.mfa_factors`);
+  });
 });
 
 describe('creating shifts', () => {
@@ -701,5 +712,95 @@ describe('create_shifts input validation', () => {
     await rejects(create({ ...base, client_ids: [CL[0]], worker_ids: [null] }), /id is empty/);
     await rejects(create({ ...base, client_ids: ['99999999-0000-0000-0000-000000000000'], worker_ids: [] }), /participants does not exist/);
     await rejects(create({ ...base, client_ids: [CL[0]], worker_ids: ['99999999-0000-0000-0000-000000000000'] }), /workers does not exist/);
+  });
+});
+
+describe('documents hub', () => {
+  const D = (n) => `40000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')}`;
+  const ids = (rows) => rows.map((r) => r.id).sort();
+  const seeAs = (user) => as(db, user, async () => ids((await db.query('select id from public.documents')).rows));
+  const W4 = '00000000-0000-0000-0000-0000000000b4', CG4 = '10000000-0000-0000-0000-0000000000b4';
+  const soon = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+
+  before(async () => {
+    await db.exec(`insert into auth.users (id, email) values ('${W4}','w4@x.test');
+      insert into public.profiles (id,email,first_name,last_name,role) values ('${W4}','w4@x.test','Wes','Four','caregiver');
+      insert into public.caregivers (id,user_id,name,email,worker_level) values ('${CG4}','${W4}','Wes Four','w4@x.test','level_2')`);
+    await as(db, U.office, () => db.query(`
+      insert into public.documents (id, title, category, caregiver_id, client_id, file_path, file_name, visible_to_staff, expiry_date) values
+        ('${D(1)}', 'Wendy screening check', 'NDIS Worker Screening', '${CG.w1}', null, 'office/1.pdf', '1.pdf', false, current_date - 1),
+        ('${D(2)}', 'Cara behaviour support plan', 'Behaviour Support Plan', null, '${CL[0]}', 'office/2.pdf', '2.pdf', true, current_date + 10),
+        ('${D(3)}', 'Cara NDIS plan (office only)', 'NDIS Plan', null, '${CL[0]}', 'office/3.pdf', '3.pdf', false, null),
+        ('${D(4)}', 'Dev risk assessment', 'Risk Assessment', null, '${CL[1]}', 'office/4.pdf', '4.pdf', true, null),
+        ('${D(5)}', 'Code of conduct', 'Policy', null, null, 'office/5.pdf', '5.pdf', true, null),
+        ('${D(6)}', 'Board minutes', 'Other', null, null, 'office/6.pdf', '6.pdf', false, null)`));
+    await db.exec(`insert into public.client_caregivers (client_id, caregiver_id) values ('${CL[0]}', '${CG.w1}')`);
+  });
+
+  test('office sees everything; workers see own, shared org docs and shared docs of participants they support', async () => {
+    assert.equal((await seeAs(U.office)).length, 6);
+    assert.deepEqual(await seeAs(U.w1), [D(1), D(2), D(5)].sort());
+    assert.deepEqual(await seeAs(W4), [D(5)]);
+    assert.deepEqual(await seeAs(null), []);
+  });
+
+  test('being rostered with a participant soon also shares their documents', async () => {
+    await create({ client_ids: [CL[1]], worker_ids: [CG4], date: soon, support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    assert.deepEqual(await seeAs(W4), [D(4), D(5)].sort());
+  });
+
+  test('worker uploads are forced to pending review, own-only, and cannot be edited or deleted', async () => {
+    await as(db, U.w1, () => db.query(`insert into public.documents (id, title, category, caregiver_id, file_path, file_name, status, visible_to_staff)
+      values ('${D(7)}', 'My first aid', 'First Aid', '${CG.w1}', '${U.w1}/fa.pdf', 'fa.pdf', 'approved', true)`));
+    const row = await one(`select status, visible_to_staff, uploaded_by from public.documents where id = '${D(7)}'`);
+    assert.deepEqual([row.status, row.visible_to_staff, row.uploaded_by], ['pending_review', false, U.w1]);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.documents (title, caregiver_id, file_path, file_name) values ('x', '${CG.w2}', '${U.w1}/x.pdf', 'x.pdf')`)), /row-level security|forbidden/);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.documents (title, caregiver_id, client_id, file_path, file_name) values ('x', '${CG.w1}', '${CL[0]}', '${U.w1}/y.pdf', 'y.pdf')`)), /row-level security|forbidden/);
+    await as(db, U.w1, () => db.query(`update public.documents set status = 'approved' where id = '${D(7)}'`));
+    await as(db, U.w1, () => db.query(`delete from public.documents where id = '${D(1)}'`));
+    assert.equal((await one(`select status from public.documents where id = '${D(7)}'`)).status, 'pending_review');
+    assert.equal((await one(`select count(*)::int n from public.documents where id = '${D(1)}'`)).n, 1);
+  });
+
+  test('office review stamps who approved it and when', async () => {
+    await as(db, U.office, () => db.query(`update public.documents set status = 'approved' where id = '${D(7)}'`));
+    const r = await one(`select status, reviewed_by, reviewed_at from public.documents where id = '${D(7)}'`);
+    assert.equal(r.status, 'approved');
+    assert.equal(r.reviewed_by, U.office);
+    assert.ok(r.reviewed_at);
+  });
+
+  test('files: workers upload to their own folder and can only read files of documents they can see', async () => {
+    await db.exec(`insert into storage.objects (bucket_id, name) values ('documents', 'office/2.pdf'), ('documents', 'office/3.pdf'), ('documents', 'office/4.pdf')`);
+    await as(db, U.w1, () => db.query(`insert into storage.objects (bucket_id, name) values ('documents', '${U.w1}/fa.pdf')`));
+    await rejects(as(db, U.w1, () => db.query(`insert into storage.objects (bucket_id, name) values ('documents', '${U.w2}/evil.pdf')`)), /row-level security/);
+    const files = await as(db, U.w1, async () => (await db.query(`select name from storage.objects where bucket_id = 'documents' order by name`)).rows.map((r) => r.name));
+    assert.deepEqual(files, [`${U.w1}/fa.pdf`, 'office/2.pdf']);
+  });
+
+  test('approving a renewal archives the older copy of the same kind; other kinds and other people are untouched', async () => {
+    await as(db, U.office, () => db.query(`
+      insert into public.documents (id, title, category, caregiver_id, file_path, file_name, expiry_date, created_at) values
+        ('${D(20)}', 'Old CPR', 'CPR', '${CG.w3}', 'office/20.pdf', '20.pdf', current_date - 5, now() - interval '2 days'),
+        ('${D(21)}', 'Degree', 'Qualification', '${CG.w3}', 'office/21.pdf', '21.pdf', null, now() - interval '2 days'),
+        ('${D(22)}', 'Other worker CPR', 'CPR', '${CG.w1}', 'office/22.pdf', '22.pdf', current_date - 5, now() - interval '2 days')`));
+    // Worker uploads the renewal: pending, so nothing is archived yet.
+    await as(db, U.w3, () => db.query(`insert into public.documents (id, title, category, caregiver_id, file_path, file_name, expiry_date)
+      values ('${D(23)}', 'New CPR', 'CPR', '${CG.w3}', '${U.w3}/cpr.pdf', 'cpr.pdf', current_date + 365)`));
+    assert.equal((await one(`select archived from public.documents where id = '${D(20)}'`)).archived, false);
+    await as(db, U.office, () => db.query(`update public.documents set status = 'approved' where id = '${D(23)}'`));
+    const a = Object.fromEntries((await q(`select id, archived from public.documents where id in ('${D(20)}','${D(21)}','${D(22)}','${D(23)}')`)).map((r) => [r.id, r.archived]));
+    assert.deepEqual([a[D(20)], a[D(21)], a[D(22)], a[D(23)]], [true, false, false, false]);
+    // A second qualification never replaces the first.
+    await as(db, U.office, () => db.query(`insert into public.documents (title, category, caregiver_id, file_path, file_name) values ('Cert IV', 'Qualification', '${CG.w3}', 'office/24.pdf', '24.pdf')`));
+    assert.equal((await one(`select archived from public.documents where id = '${D(21)}'`)).archived, false);
+    await as(db, U.office, () => db.query(`delete from public.documents where id in ('${D(20)}','${D(21)}','${D(22)}','${D(23)}') or file_path = 'office/24.pdf'`));
+  });
+
+  test('expiry summary counts expired, expiring soon and pending review within what the caller can see', async () => {
+    const office = await as(db, U.office, async () => (await db.query('select * from public.document_expiry_summary(30)')).rows[0]);
+    assert.deepEqual([Number(office.expired), Number(office.expiring), Number(office.pending_review)], [1, 1, 0]);
+    const w2 = await as(db, W4, async () => (await db.query('select * from public.document_expiry_summary(30)')).rows[0]);
+    assert.deepEqual([Number(w2.expired), Number(w2.expiring)], [0, 0]);
   });
 });

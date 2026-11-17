@@ -14,6 +14,7 @@ import {
   Settings,
   UserPlus,
   FileText,
+  FolderOpen,
   LogOut,
   Search,
   DollarSign,
@@ -46,7 +47,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useOrganisation } from "@/hooks/use-organisation";
 import { useNavCounts } from "@/hooks/use-nav-counts";
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; badge?: "approvals" | "incidents" | "chat" | "onboarding" };
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; badge?: "approvals" | "incidents" | "chat" | "onboarding" | "documents" };
 
 const operationsItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -65,6 +66,7 @@ const peopleItems: NavItem[] = [
 ];
 
 const recordsItems: NavItem[] = [
+  { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, badge: "documents" },
   { href: "/dashboard/shift-note", label: "Shift notes", icon: FileText },
   { href: "/dashboard/incidents", label: "Incidents", icon: ShieldAlert, badge: "incidents" },
   { href: "/dashboard/timesheets", label: "Timesheets", icon: Clock },

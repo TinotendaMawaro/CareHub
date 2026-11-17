@@ -3,8 +3,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Banner, Button, Card, H1, Input, Label, Muted, Pill, Screen, colors } from '@/components/ui';
+import { DocRow } from '@/components/documents';
 import { useSession } from '@/hooks/use-session';
-import { formatDay, formatTime, hoursLabel } from '@/lib/format';
+import { DOC_SELECT, type Doc } from '@/lib/documents';
+import { formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
 import { parseError, rpc, supabase } from '@/lib/supabase';
 
 type Client = { id: string; first_name: string; last_name: string; address: string | null; allergies: string[]; care_plan: string | null; emergency_contact: string | null; phone: string | null };
@@ -30,6 +32,17 @@ async function currentPosition(): Promise<{ lat: number; lng: number; accuracy: 
   }
 }
 
+const fetchShift = (id: string, caregiverId: string) =>
+  Promise.all([
+    supabase.from('shifts')
+      .select('id,start_time,end_time,status,is_sleepover,ratio,notes,approval_status,reject_reason,approved_at,geofence_required,sites(name,address),shift_clients(clients(id,first_name,last_name,address,allergies,care_plan,emergency_contact,phone)),shift_workers(caregiver_id,clock_in_time,clock_out_time,hours_worked)')
+      .eq('id', id).maybeSingle(),
+    supabase.from('shift_team').select('caregiver_id,name,role').eq('shift_id', id),
+    supabase.from('shift_notes').select('id,client_id,note,category,follow_up,timestamp').eq('shift_id', id).eq('caregiver_id', caregiverId).order('timestamp', { ascending: false }),
+    // Row level security limits this to participants this worker supports.
+    supabase.from('documents').select(DOC_SELECT).not('client_id', 'is', null).order('category'),
+  ]);
+
 export default function ShiftScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -37,24 +50,25 @@ export default function ShiftScreen() {
   const [shift, setShift] = useState<Shift | null>(null);
   const [team, setTeam] = useState<{ caregiver_id: string; name: string; role: string }[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [docs, setDocs] = useState<Doc[]>([]);
   const [busy, setBusy] = useState<'start' | 'end' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [brk, setBrk] = useState('0');
 
-  const load = useCallback(async () => {
-    const [s, t, n] = await Promise.all([
-      supabase.from('shifts')
-        .select('id,start_time,end_time,status,is_sleepover,ratio,notes,approval_status,reject_reason,approved_at,geofence_required,sites(name,address),shift_clients(clients(id,first_name,last_name,address,allergies,care_plan,emergency_contact,phone)),shift_workers(caregiver_id,clock_in_time,clock_out_time,hours_worked)')
-        .eq('id', id).maybeSingle(),
-      supabase.from('shift_team').select('caregiver_id,name,role').eq('shift_id', id),
-      supabase.from('shift_notes').select('id,client_id,note,category,follow_up,timestamp').eq('shift_id', id).eq('caregiver_id', me?.caregiverId ?? '').order('timestamp', { ascending: false }),
-    ]);
+  const caregiverId = me?.caregiverId ?? '';
+  const apply = useCallback(([s, t, n, d]: Awaited<ReturnType<typeof fetchShift>>) => {
     setShift(s.data as unknown as Shift | null);
     setTeam((t.data ?? []) as typeof team);
     setNotes((n.data ?? []) as Note[]);
-  }, [id, me?.caregiverId]);
+    setDocs((d.data ?? []) as Doc[]);
+  }, []);
+  const load = useCallback(async () => apply(await fetchShift(id, caregiverId)), [id, caregiverId, apply]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    void fetchShift(id, caregiverId).then((r) => { if (alive) apply(r); });
+    return () => { alive = false; };
+  }, [id, caregiverId, apply]);
 
   const mine = shift?.shift_workers.find((w) => w.caregiver_id === me?.caregiverId);
   const locked = !!shift?.approved_at;
@@ -138,13 +152,14 @@ export default function ShiftScreen() {
           <Button title="Start shift" onPress={start} loading={busy === 'start'} disabled={shift.status === 'Cancelled'} />
         )}
         {!started && !ended && shift.geofence_required !== false && (
-          <Muted>Starting needs your location: you must be at the participant's address.</Muted>
+          <Muted>Starting needs your location: you must be at the participant&apos;s address.</Muted>
         )}
 
         {clients.map((c) => (
           <ParticipantCard
             key={c.id} client={c} shiftId={shift.id} started={started} disabled={locked}
             notes={notes.filter((n) => n.client_id === c.id)} onSaved={load}
+            docs={docs.filter((d) => d.client_id === c.id)}
             onIncident={() => router.push({ pathname: '/incident/new', params: { shiftId: shift.id, clientId: c.id } })}
           />
         ))}
@@ -163,9 +178,10 @@ export default function ShiftScreen() {
 }
 
 function ParticipantCard({
-  client, shiftId, started, disabled, notes, onSaved, onIncident,
-}: { client: Client; shiftId: string; started: boolean; disabled: boolean; notes: Note[]; onSaved: () => Promise<void>; onIncident: () => void }) {
-  const { me } = useSession();
+  client, shiftId, started, disabled, notes, docs, onSaved, onIncident,
+}: { client: Client; shiftId: string; started: boolean; disabled: boolean; notes: Note[]; docs: Doc[]; onSaved: () => Promise<void>; onIncident: () => void }) {
+  const { me, org } = useSession();
+  const today = localDate(new Date(), org.timezone);
   const [text, setText] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('general');
   const [follow, setFollow] = useState(false);
@@ -188,13 +204,19 @@ function ParticipantCard({
     <Card>
       <Pressable onPress={() => setOpen(!open)} accessibilityRole="button">
         <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>{client.first_name} {client.last_name}</Text>
-        <Muted>{open ? 'Hide details' : 'Tap for care details'}</Muted>
+        <Muted>{open ? 'Hide details' : `Tap for care details${docs.length ? ` and ${docs.length} document${docs.length === 1 ? '' : 's'}` : ''}`}</Muted>
       </Pressable>
       {open && (
         <View style={{ gap: 4 }}>
           {client.allergies.length > 0 && <Banner tone="warn" text={`Allergies: ${client.allergies.join(', ')}`} />}
           {client.care_plan ? <Text style={{ color: colors.text }}>{client.care_plan}</Text> : <Muted>No care plan recorded.</Muted>}
           {client.emergency_contact && <Muted>Emergency contact: {client.emergency_contact}</Muted>}
+          {docs.length > 0 && (
+            <View style={{ marginTop: 6 }}>
+              <Label>Documents</Label>
+              {docs.map((d) => <DocRow key={d.id} doc={d} today={today} showStatus={false} />)}
+            </View>
+          )}
         </View>
       )}
 

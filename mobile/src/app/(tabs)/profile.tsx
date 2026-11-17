@@ -4,7 +4,8 @@ import { Alert, Image, ScrollView, Text, View } from 'react-native';
 import { TwoFactorCard } from '@/components/two-factor-card';
 import { Banner, Button, Card, Input, Label, Muted, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
-import { formatDay } from '@/lib/format';
+import { needsRenewal } from '@/lib/documents';
+import { formatDay, localDate } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 type Note = { id: string; title: string; message: string; read: boolean; timestamp: string };
@@ -19,16 +20,23 @@ export default function Profile() {
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
   const [pw, setPw] = useState('');
+  const [docAlert, setDocAlert] = useState(0);
 
+  const caregiverId = me?.caregiverId;
   const load = useCallback(async () => {
-    const [n, l] = await Promise.all([
+    const [n, l, d] = await Promise.all([
       supabase.from('notifications').select('id,title,message,read,timestamp').order('timestamp', { ascending: false }).limit(15),
       supabase.from('time_off_requests').select('id,start_date,end_date,status,reason').order('requested_at', { ascending: false }).limit(8),
+      caregiverId
+        ? supabase.from('documents').select('id,category,expiry_date,status,created_at').eq('caregiver_id', caregiverId)
+        : Promise.resolve({ data: [] as { id: string; category: string; expiry_date: string | null; status: 'pending_review' | 'approved' | 'rejected'; created_at: string }[] }),
     ]);
+    const today = localDate(new Date(), org.timezone);
+    setDocAlert(needsRenewal(d.data ?? [], today).length);
     setNotes((n.data ?? []) as Note[]);
     setLeave((l.data ?? []) as Leave[]);
     void refreshOnboarding();
-  }, [refreshOnboarding]);
+  }, [refreshOnboarding, caregiverId, org.timezone]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   async function markRead(id: string) {
@@ -67,6 +75,9 @@ export default function Profile() {
 
         {incomplete && <Banner tone="warn" text={`Onboarding: ${onboarding.approved_steps} of ${onboarding.required_steps} required steps done.`} />}
         <Button title="Onboarding checklist" kind={incomplete ? 'primary' : 'outline'} onPress={() => router.push('/onboarding')} />
+
+        {docAlert > 0 && <Banner tone="warn" text={`${docAlert} of your documents ${docAlert === 1 ? 'has expired or expires' : 'have expired or expire'} soon. Upload a renewed copy.`} />}
+        <Button title="My documents" kind={docAlert > 0 ? 'primary' : 'outline'} onPress={() => router.push('/documents')} />
 
         <Card>
           <Label>Notifications</Label>

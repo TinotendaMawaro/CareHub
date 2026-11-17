@@ -24,6 +24,8 @@ function Body({ text }: { text: string }) {
   );
 }
 
+const fetchPending = () => supabase.rpc('pending_legal_documents');
+
 export default function Terms() {
   const { refreshOnboarding, signOut, me } = useSession();
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -31,12 +33,16 @@ export default function Terms() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data, error: err } = await supabase.rpc('pending_legal_documents');
+  const apply = useCallback(({ data, error: err }: Awaited<ReturnType<typeof fetchPending>>) => {
     if (err) setError(err.message);
     setDocs((data ?? []) as Doc[]);
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  const load = useCallback(async () => apply(await fetchPending()), [apply]);
+  useEffect(() => {
+    let alive = true;
+    void fetchPending().then((r) => { if (alive) apply(r); });
+    return () => { alive = false; };
+  }, [apply]);
 
   async function accept(doc: Doc) {
     setError(null);

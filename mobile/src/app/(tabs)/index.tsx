@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, SectionList, Text, View } from 'react-native';
 import { Button, Card, Empty, Muted, Pill, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
-import { formatDateTime, formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
+import { formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
 import { parseError, rpc, supabase } from '@/lib/supabase';
 
 export type ShiftRow = {

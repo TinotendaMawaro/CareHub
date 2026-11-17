@@ -12,19 +12,29 @@ type Task = { id: string; step_key: string; title: string; description: string |
 const TONE = { todo: 'muted', submitted: 'warn', approved: 'ok', rejected: 'danger' } as const;
 const LABEL = { todo: 'To do', submitted: 'With the office', approved: 'Done', rejected: 'Needs fixing' } as const;
 
+const fetchTasks = (uid: string) =>
+  supabase.from('onboarding_tasks').select('id,step_key,title,description,kind,required,status,review_note,data').eq('profile_id', uid).order('created_at');
+
 export default function Onboarding() {
   const { session, refreshOnboarding } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
-    if (!session) return;
-    const { data } = await supabase.from('onboarding_tasks').select('id,step_key,title,description,kind,required,status,review_note,data').eq('profile_id', session.user.id).order('created_at');
+  const uid = session?.user.id;
+  const apply = useCallback(async ({ data }: Awaited<ReturnType<typeof fetchTasks>>) => {
     setTasks((data ?? []) as Task[]);
     await refreshOnboarding();
-  }, [session, refreshOnboarding]);
-  useEffect(() => { void load(); }, [load]);
+  }, [refreshOnboarding]);
+  const load = useCallback(async () => {
+    if (uid) await apply(await fetchTasks(uid));
+  }, [uid, apply]);
+  useEffect(() => {
+    if (!uid) return;
+    let alive = true;
+    void fetchTasks(uid).then((r) => { if (alive) void apply(r); });
+    return () => { alive = false; };
+  }, [uid, apply]);
 
   async function submit(t: Task, data: Record<string, unknown>, file: string | null) {
     try {

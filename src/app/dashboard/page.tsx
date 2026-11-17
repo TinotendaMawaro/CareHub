@@ -54,6 +54,7 @@ import { BirthdaysWidget } from "@/components/dashboard/birthdays-widget";
 import { WorkAnniversariesWidget } from "@/components/dashboard/work-anniversaries-widget";
 import { MessageWallWidget } from "@/components/dashboard/message-wall-widget";
 import { MissedClockInsWidget } from "@/components/dashboard/missed-clockins-widget";
+import { ComplianceWidget } from "@/components/dashboard/compliance-widget";
 import { AlertItem } from "@/components/dashboard/alert-item";
 
 export default function DashboardPage() {
@@ -281,6 +282,7 @@ export default function DashboardPage() {
 
         {/* Compact Widgets */}
         <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
+          <ComplianceWidget />
           <UpcomingShiftsWidget shifts={metrics.upcomingShifts} clients={clients} />
           <OnLeaveWidget timeOffRequests={metrics.onLeave} caregivers={caregivers} />
           <BirthdaysWidget birthdays={metrics.birthdays} />
