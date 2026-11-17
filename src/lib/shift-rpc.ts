@@ -1,0 +1,88 @@
+import { supabase } from "@/lib/supabase/client";
+
+/** Database errors are raised as "code: message"; split them so the UI can show the message and branch on the code. */
+export function parseRpcError(e: unknown): { code: string; message: string } {
+  const raw = e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as any).message) : String(e);
+  const m = /^([a-z_]+): ([sS]*)$/.exec(raw);
+  return m ? { code: m[1], message: m[2] } : { code: "error", message: raw };
+}
+
+async function call<T = unknown>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+  const { data, error } = await supabase.rpc(fn, args);
+  if (error) throw new Error(error.message);
+  return data as T;
+}
+
+export type Scope = "this" | "following" | "all";
+
+export type ShiftBlock = {
+  start_time: string; // "HH:MM" in the organisation's timezone
+  end_time: string; // earlier than start_time means it ends the next day
+  support_family?: string | null;
+  item_number?: string | null; // explicit cost code; null = resolve from time band
+  is_sleepover?: boolean;
+  notes?: string;
+};
+
+export type RepeatRule = {
+  freq: "none" | "daily" | "weekly";
+  interval?: number;
+  weekdays?: number[]; // ISO: Monday = 1 ... Sunday = 7
+  until?: string; // YYYY-MM-DD
+  count?: number;
+};
+
+export type CreateShiftsInput = {
+  client_ids: string[];
+  worker_ids: string[];
+  site_id?: string | null;
+  ratio?: string;
+  required_workers?: number;
+  geofence_required?: boolean | null;
+  notes?: string;
+  allow_overlap?: boolean;
+  skip_conflicts?: boolean;
+  service_type?: string;
+  support_family?: string | null;
+  date: string;
+  blocks: ShiftBlock[];
+  repeat?: RepeatRule;
+};
+
+export type CreateShiftsResult = {
+  shift_ids: string[];
+  series_ids: string[];
+  skipped: { date: string; block: number; worker: string; reason: string }[];
+};
+
+export const shiftRpc = {
+  create: (input: CreateShiftsInput) => call<CreateShiftsResult>("create_shifts", { p: input }),
+  split: (shiftId: string, at: string, opts: { itemNumber?: string | null; family?: string | null; sleepover?: boolean | null } = {}) =>
+    call<string>("split_shift", {
+      p_shift: shiftId, p_at: at, p_item_number: opts.itemNumber ?? null,
+      p_support_family: opts.family ?? null, p_is_sleepover: opts.sleepover ?? null,
+    }),
+  splitSeries: (shiftId: string, time: string, scope: Scope, opts: { itemNumber?: string | null; family?: string | null; sleepover?: boolean | null } = {}) =>
+    call<{ new_shift_ids: string[]; skipped: { shift_id: string; date: string; reason: string }[] }>("split_series", {
+      p_shift: shiftId, p_time: time, p_scope: scope, p_item_number: opts.itemNumber ?? null,
+      p_support_family: opts.family ?? null, p_is_sleepover: opts.sleepover ?? null,
+    }),
+  addWorker: (shiftId: string, caregiverId: string, scope: Scope = "this") =>
+    call<{ added: number; skipped: unknown[] }>("add_shift_worker", { p_shift: shiftId, p_caregiver: caregiverId, p_scope: scope }),
+  removeWorker: (shiftId: string, caregiverId: string, scope: Scope = "this") =>
+    call<number>("remove_shift_worker", { p_shift: shiftId, p_caregiver: caregiverId, p_scope: scope }),
+  addClient: (shiftId: string, clientId: string, scope: Scope = "this") =>
+    call<{ added: number; skipped: unknown[] }>("add_shift_client", { p_shift: shiftId, p_client: clientId, p_scope: scope }),
+  removeClient: (shiftId: string, clientId: string) => call<void>("remove_shift_client", { p_shift: shiftId, p_client: clientId }),
+  cancel: (ids: string[], reason: string | null, pay: boolean) => call<number>("cancel_shifts", { p_ids: ids, p_reason: reason, p_pay: pay }),
+  remove: (shiftId: string, scope: Scope = "this") => call<number>("delete_shifts", { p_shift: shiftId, p_scope: scope }),
+  publish: (shiftId: string) => call<void>("publish_shift", { p_shift: shiftId }),
+  approve: (shiftId: string, useScheduled = false) => call<void>("approve_shift", { p_shift: shiftId, p_use_scheduled: useScheduled }),
+  approveMany: (ids: string[], useScheduled = false) =>
+    call<{ approved: number; failed: { shift_id: string; error: string }[] }>("approve_shifts", { p_ids: ids, p_use_scheduled: useScheduled }),
+  reject: (shiftId: string, reason: string) => call<void>("reject_shift", { p_shift: shiftId, p_reason: reason }),
+  unapprove: (shiftId: string) => call<void>("unapprove_shift", { p_shift: shiftId }),
+  adjust: (shiftId: string, caregiverId: string, clockIn: string | null, clockOut: string | null, breakMinutes = 0) =>
+    call<void>("adjust_shift_worker", { p_shift: shiftId, p_caregiver: caregiverId, p_in: clockIn, p_out: clockOut, p_break: breakMinutes }),
+  syncStatuses: () => call<number>("sync_shift_statuses"),
+};

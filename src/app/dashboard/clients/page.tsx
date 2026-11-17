@@ -80,8 +80,6 @@ export default function ClientsPage() {
       preferredCaregivers: data.preferredCaregivers ? data.preferredCaregivers.split(',').map((s: string) => s.trim()) : [],
       profilePictureUrl: data.avatarUrl || `https://picsum.photos/seed/${data.firstName}${data.lastName}/100/100`,
       location: { latitude: 0, longitude: 0 }, // Default location, should be updated with actual coordinates
-      createdAt: new Date(),
-      updatedAt: new Date(),
       status: data.status,
     };
     await addClient(clientData);

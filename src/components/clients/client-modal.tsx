@@ -33,8 +33,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import type { Client } from "@/lib/types";
 import { useCaregivers } from "@/hooks/use-caregivers";
-import { storage } from "@/lib/firebase/client";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabase } from "@/lib/supabase/client";
 import { Camera, Upload } from "lucide-react";
 
 const clientSchema = z.object({
@@ -149,10 +148,14 @@ export default function ClientModal({
     if (!avatarFile) return client?.profilePictureUrl;
 
     try {
-      const storageRef = ref(storage, `clients/${Date.now()}_${avatarFile.name}`);
-      const snapshot = await uploadBytes(storageRef, avatarFile);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      return downloadURL;
+      const path = `clients/${Date.now()}_${avatarFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, avatarFile, { cacheControl: "3600", upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      return data.publicUrl;
     } catch (error) {
       console.error("Error uploading avatar:", error);
       throw new Error("Failed to upload profile picture");

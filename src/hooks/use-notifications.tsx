@@ -1,150 +1,113 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Notification } from '@/lib/types';
+import { useAuth } from './use-auth';
 import {
   requestNotificationPermission,
-  listenForShiftChanges,
-  listenForIncidents,
-  listenForShiftNotes,
-  listenForReports,
-  getStoredNotifications,
+  listenForNotifications,
+  fetchNotifications,
   markAsRead,
+  markAllAsRead,
   clearNotifications,
 } from '@/lib/notifications';
+import type { Notification } from '@/lib/types';
 
 export const useNotifications = () => {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Load stored notifications on mount
-  useEffect(() => {
-    const stored = getStoredNotifications();
-    setNotifications(stored);
-    setUnreadCount(stored.filter(n => !n.read).length);
-  }, []);
-
-  // Check notification permission
   useEffect(() => {
     if ('Notification' in window) {
       setPermissionGranted(Notification.permission === 'granted');
     }
   }, []);
 
-  // Set up listeners for real-time notifications
   useEffect(() => {
-    const handleNewNotification = (notification: Notification) => {
-      setNotifications(prev => [notification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-    };
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    // Set up listeners (these would be active when Firestore is connected)
-    const unsubscribers: (() => void)[] = [
-      listenForShiftChanges(handleNewNotification),
-      listenForIncidents(handleNewNotification),
-      listenForShiftNotes(handleNewNotification),
-      listenForReports(handleNewNotification),
-    ];
+    let cancelled = false;
+
+    void fetchNotifications(user.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setNotifications(rows);
+        setUnreadCount(rows.filter((n) => !n.read).length);
+      })
+      .catch((err) => console.error('Failed to load notifications:', err))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    const unsubscribe = listenForNotifications(user.id, (notification) => {
+      setNotifications((prev) => [notification, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+
+      if (typeof window !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(notification.title, {
+          body: notification.message,
+          icon: '/favicon.png',
+        });
+      }
+    });
 
     return () => {
-      unsubscribers.forEach(unsub => unsub?.());
+      cancelled = true;
+      unsubscribe();
     };
-  }, []);
+  }, [user]);
 
   const requestPermission = useCallback(async () => {
-    const token = await requestNotificationPermission();
-    if (token) {
-      setPermissionGranted(true);
-      return true;
+    const granted = await requestNotificationPermission();
+    setPermissionGranted(granted);
+    return granted;
+  }, []);
+
+  const markNotificationAsRead = useCallback(async (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await markAsRead(id);
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
     }
-    return false;
   }, []);
 
-  const markNotificationAsRead = useCallback((id: string) => {
-    markAsRead(id);
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  }, []);
-
-  const markAllAsRead = useCallback(() => {
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read: true }))
-    );
+  const markAllNotificationsAsRead = useCallback(async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
+    if (!user) return;
+    try {
+      await markAllAsRead(user.id);
+    } catch (err) {
+      console.error('Failed to mark all notifications as read:', err);
+    }
+  }, [user]);
 
-    // Update localStorage
-    const existing = JSON.parse(localStorage.getItem('notifications') || '[]');
-    const updated = existing.map((n: Notification) => ({ ...n, read: true }));
-    localStorage.setItem('notifications', JSON.stringify(updated));
-  }, []);
-
-  const clearAllNotifications = useCallback(() => {
-    clearNotifications();
+  const clearAllNotifications = useCallback(async () => {
     setNotifications([]);
     setUnreadCount(0);
-  }, []);
-
-  // Demo function to add test notifications
-  const addTestNotification = useCallback((type: Notification['type']) => {
-    const testNotifications = {
-      shift: {
-        title: 'Shift Started',
-        message: 'Caregiver Alice Johnson has started their shift',
-        type: 'shift' as const,
-      },
-      incident: {
-        title: 'New Incident Report',
-        message: 'A Medium severity incident has been reported',
-        type: 'incident' as const,
-      },
-      note: {
-        title: 'New Shift Note',
-        message: 'A new shift note has been added',
-        type: 'note' as const,
-      },
-      report: {
-        title: 'New Report Generated',
-        message: 'A new caregiver hours report is available',
-        type: 'report' as const,
-      },
-    };
-
-    const notification = testNotifications[type];
-    const newNotification: Notification = {
-      ...notification,
-      id: Date.now().toString(),
-      timestamp: new Date(),
-      read: false,
-    };
-
-    setNotifications(prev => [newNotification, ...prev]);
-    setUnreadCount(prev => prev + 1);
-
-    // Store in localStorage
-    const existing = JSON.parse(localStorage.getItem('notifications') || '[]');
-    existing.unshift(newNotification);
-    localStorage.setItem('notifications', JSON.stringify(existing));
-
-    // Show browser notification if permission granted
-    if (permissionGranted) {
-      new Notification(notification.title, {
-        body: notification.message,
-        icon: '/favicon.ico',
-      });
+    if (!user) return;
+    try {
+      await clearNotifications(user.id);
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
     }
-  }, [permissionGranted]);
+  }, [user]);
 
   return {
     notifications,
     unreadCount,
     permissionGranted,
+    loading,
     requestPermission,
     markAsRead: markNotificationAsRead,
-    markAllAsRead,
+    markAllAsRead: markAllNotificationsAsRead,
     clearAll: clearAllNotifications,
-    addTestNotification,
   };
 };

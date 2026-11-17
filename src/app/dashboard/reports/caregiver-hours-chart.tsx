@@ -8,7 +8,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { useShifts } from "@/hooks/use-shifts"
-import { useCaregivers } from "@/hooks/use-caregivers"
 
 const chartConfig = {
   hours: {
@@ -18,8 +17,7 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export default function CaregiverHoursChart() {
-  const { shifts } = useShifts()
-  const { caregivers } = useCaregivers()
+  const { shifts, caregivers } = useShifts()
 
   // Calculate hours for each caregiver from completed shifts this week
   const chartData = caregivers.map(caregiver => {

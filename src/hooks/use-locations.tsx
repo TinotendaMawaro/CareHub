@@ -1,24 +1,17 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import {
-  collection,
-  doc,
-  addDoc,
-  updateDoc,
-  query,
-  orderBy,
-  onSnapshot
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase/client';
 import { useAuth } from './use-auth';
+import { refreshOnChange } from '@/lib/supabase/realtime';
+import { mapLocation } from '@/lib/supabase/mappers';
 import type { Location } from '@/lib/types';
 
 export function useLocations() {
+  const { user } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
 
   useEffect(() => {
     if (!user) {
@@ -26,55 +19,57 @@ export function useLocations() {
       return;
     }
 
-    const q = query(collection(db, 'locations'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const locationData: Location[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        // Convert Firebase Timestamp to Date
-        const processedData = {
-          ...data,
-          timestamp: data.timestamp?.toDate?.() || new Date(data.timestamp),
-        };
-        locationData.push({ id: doc.id, ...processedData } as Location);
-      });
-      setLocations(locationData);
-      setLoading(false);
-      setError(null);
-    }, (err) => {
-      setError(err.message);
-      setLoading(false);
-    });
+    const load = async () => {
+      const { data, error: err } = await supabase
+        .from('locations')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      if (err) throw err;
+      setLocations((data ?? []).map(mapLocation));
+    };
 
-    return () => unsubscribe();
+    void load()
+      .then(() => setError(null))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load locations'))
+      .finally(() => setLoading(false));
+
+    return refreshOnChange('locations', load);
   }, [user]);
 
-  const addLocation = async (locationData: Omit<Location, 'id'>) => {
-    try {
+  const addLocation = useCallback(
+    async (locationData: Omit<Location, 'id'>) => {
       setError(null);
-      await addDoc(collection(db, 'locations'), locationData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add location');
+      const { error: err } = await supabase.from('locations').insert({
+        caregiver_id: locationData.caregiverId,
+        lat: locationData.latitude,
+        lng: locationData.longitude,
+        accuracy: locationData.accuracy ?? null,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    []
+  );
+
+  const updateLocation = useCallback(async (id: string, locationData: Partial<Location>) => {
+    setError(null);
+    const patch: Record<string, unknown> = {};
+    if (locationData.accuracy !== undefined) patch.accuracy = locationData.accuracy;
+    if (locationData.latitude !== undefined && locationData.longitude !== undefined) {
+      patch.lat = locationData.latitude;
+      patch.lng = locationData.longitude;
+    }
+    const { error: err } = await supabase
+      .from('locations')
+      .update(patch)
+      .eq('id', id);
+    if (err) {
+      setError(err.message);
       throw err;
     }
-  };
+  }, []);
 
-  const updateLocation = async (id: string, locationData: Partial<Location>) => {
-    try {
-      setError(null);
-      const locationRef = doc(db, 'locations', id);
-      await updateDoc(locationRef, locationData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update location');
-      throw err;
-    }
-  };
-
-  return {
-    locations,
-    loading,
-    error,
-    addLocation,
-    updateLocation
-  };
+  return { locations, loading, error, addLocation, updateLocation };
 }

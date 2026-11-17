@@ -24,15 +24,9 @@ import {
 import { Calendar, Clock, User, CheckCircle, XCircle, PlayCircle } from "lucide-react";
 import type { Client, Shift } from "@/lib/types";
 import { useState, useEffect } from 'react';
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  onSnapshot
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
-import { useCaregivers } from "@/hooks/use-caregivers";
+import { supabase } from '@/lib/supabase/client';
+import { refreshOnChange } from '@/lib/supabase/realtime';
+import { mapShift } from '@/lib/supabase/mappers';
 import { useShifts } from "@/hooks/use-shifts";
 import { useToast } from "@/hooks/use-toast";
 
@@ -51,34 +45,30 @@ export default function ClientScheduleModal({
   const [loading, setLoading] = useState(false);
   const [filterDate, setFilterDate] = useState<string>("");
   const [showCompletedOnly, setShowCompletedOnly] = useState(false);
-  const { caregivers } = useCaregivers();
-  const { updateShift, deleteShift } = useShifts();
+  const { caregivers, updateShift, deleteShift } = useShifts();
   const { toast } = useToast();
 
   useEffect(() => {
     if (!client || !isOpen) return;
 
     setLoading(true);
-    const q = query(
-      collection(db, 'shifts'),
-      where('clientId', '==', client.id),
-      orderBy('date', 'desc')
-    );
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const shifts: Shift[] = [];
-      querySnapshot.forEach((doc) => {
-        shifts.push({ id: doc.id, ...doc.data() } as Shift);
-      });
-      setClientShifts(shifts);
-      setLoading(false);
-    }, (error) => {
-      console.error('Error fetching shifts:', error);
-      setLoading(false);
-    });
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      setClientShifts((data ?? []).map((row) => mapShift(row, [client], caregivers)));
+    };
 
-    return () => unsubscribe();
-  }, [client, isOpen]);
+    void load()
+      .catch((error) => console.error('Error fetching shifts:', error))
+      .finally(() => setLoading(false));
+
+    return refreshOnChange('shifts', load, `client_id=eq.${client.id}`);
+  }, [client, isOpen, caregivers]);
 
   if (!client) return null;
 
@@ -293,12 +283,7 @@ export default function ClientScheduleModal({
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2">
-                    {shift.status === 'Pending' && (
-                      <Button size="sm" onClick={() => handleApproveShift(shift.shiftId)}>
-                        Approve Shift
-                      </Button>
-                    )}
-                    {(shift.status === 'Scheduled' || shift.status === 'Pending') && (
+                    {(shift.status === 'Scheduled') && (
                       <Button size="sm" variant="destructive" onClick={() => handleCancelShift(shift.shiftId)}>
                         Cancel Shift
                       </Button>

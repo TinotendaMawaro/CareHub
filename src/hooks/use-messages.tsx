@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase/client';
+import { refreshOnChange } from '@/lib/supabase/realtime';
+import { mapMessage } from '@/lib/supabase/mappers';
 import type { Message } from '@/lib/types';
 
 export function useMessages(userId?: string) {
@@ -16,98 +17,56 @@ export function useMessages(userId?: string) {
       return;
     }
 
-    // Query for messages where user is sender or recipient
-    const q = query(
-      collection(db, 'messages'),
-      where('senderId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-
-    const q2 = query(
-      collection(db, 'messages'),
-      where('recipientId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-
-    const unsubscribe1 = onSnapshot(q, (querySnapshot) => {
-      const messagesData: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        messagesData.push({
-          id: doc.id,
-          senderId: data.senderId,
-          recipientId: data.recipientId,
-          content: data.content,
-          timestamp: data.timestamp.toDate(),
-          read: data.read,
-          type: data.type,
-          groupId: data.groupId,
-        } as Message);
-      });
-      setMessages(prev => [...prev, ...messagesData]);
-      setLoading(false);
-    }, (err) => {
-      setError(err.message);
-      setLoading(false);
-    });
-
-    const unsubscribe2 = onSnapshot(q2, (querySnapshot) => {
-      const messagesData: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        messagesData.push({
-          id: doc.id,
-          senderId: data.senderId,
-          recipientId: data.recipientId,
-          content: data.content,
-          timestamp: data.timestamp.toDate(),
-          read: data.read,
-          type: data.type,
-          groupId: data.groupId,
-        } as Message);
-      });
-      setMessages(prev => [...prev, ...messagesData]);
-      setLoading(false);
-    }, (err) => {
-      setError(err.message);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubscribe1();
-      unsubscribe2();
+    const load = async () => {
+      // PostgREST needs a single .or() to match sender OR recipient; RLS also
+      // scopes rows to the current user.
+      const { data, error: err } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        .order('timestamp', { ascending: false });
+      if (err) throw err;
+      setMessages((data ?? []).map(mapMessage));
     };
+
+    void load()
+      .then(() => setError(null))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load messages'))
+      .finally(() => setLoading(false));
+
+    return refreshOnChange('messages', load);
   }, [userId]);
 
-  const sendMessage = async (messageData: Omit<Message, 'id' | 'timestamp'>) => {
-    try {
+  const sendMessage = useCallback(
+    async (messageData: Omit<Message, 'id' | 'timestamp'>) => {
       setError(null);
-      await addDoc(collection(db, 'messages'), {
-        ...messageData,
-        timestamp: new Date(),
+      const { error: err } = await supabase.from('messages').insert({
+        sender_id: messageData.senderId,
+        recipient_id: messageData.recipientId || null,
+        content: messageData.content,
+        type: messageData.type ?? 'text',
+        group_id: messageData.groupId ?? null,
+        timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+    },
+    []
+  );
+
+  const markAsRead = useCallback(async (id: string) => {
+    setError(null);
+    const { error: err } = await supabase
+      .from('messages')
+      .update({ read: true })
+      .eq('id', id);
+    if (err) {
+      setError(err.message);
       throw err;
     }
-  };
+  }, []);
 
-  const markAsRead = async (id: string) => {
-    try {
-      setError(null);
-      const messageRef = doc(db, 'messages', id);
-      await updateDoc(messageRef, { read: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to mark message as read');
-      throw err;
-    }
-  };
-
-  return {
-    messages,
-    loading,
-    error,
-    sendMessage,
-    markAsRead,
-  };
+  return { messages, loading, error, sendMessage, markAsRead };
 }

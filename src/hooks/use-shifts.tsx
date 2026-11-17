@@ -1,124 +1,79 @@
 "use client";
+import { useCallback } from 'react';
 
-import { useState, useEffect } from 'react';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
-import type { Shift } from '@/lib/types';
+import { supabase } from '@/lib/supabase/client';
+
+import { createCollectionHook } from './use-collection';
+import { mapShift, toShiftRow } from '@/lib/supabase/mappers';
 import { useClients } from './use-clients';
 import { useCaregivers } from './use-caregivers';
+import type { Shift, Client, Caregiver } from '@/lib/types';
+const useShiftsCollection = createCollectionHook<Shift, Partial<Shift>>({
+  table: 'shifts',
+  map: (row) => mapShift(row),
+  toRow: toShiftRow,
+  orderBy: { column: 'start_time', ascending: false },
+  select: '*, shift_workers(caregiver_id), shift_clients(client_id)',
+  // Recent past onward: the dashboard never needs years of history in memory.
+  scope: (q: any) => q.eq('deleted', false).gte('start_time', new Date(Date.now() - 60 * 86_400_000).toISOString()),
+  softDeleteRow: { deleted: true },
+});
 
-export function useShifts() {
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { clients } = useClients();
-  const { caregivers } = useCaregivers();
+export function useShifts(clients?: Client[], caregivers?: Caregiver[]) {
+  const { clients: internalClients } = useClients();
+  const { caregivers: internalCaregivers } = useCaregivers();
+  const { items, loading, add, update, remove } = useShiftsCollection();
 
-  useEffect(() => {
-    const q = query(collection(db, 'shifts'), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const shiftsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        // Convert any Firebase Timestamps to strings
-        const processedData = Object.keys(data).reduce((acc, key) => {
-          const value = data[key];
-          if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
-            acc[key] = value.toDate().toISOString();
-          } else {
-            acc[key] = value;
-          }
-          return acc;
-        }, {} as any);
-        const client = clients.find(c => c.id === processedData.clientId);
-        const caregiver = caregivers.find(c => c.id === processedData.caregiverId);
-        return {
-          id: doc.id,
-          shiftId: doc.id,
-          ...processedData,
-          date: processedData.date?.split('T')[0] || processedData.date,
-          clientName: client?.name || 'Unknown Client',
-          caregiverName: caregiver?.name || 'Unknown Caregiver',
-        } as Shift;
-      });
-      setShifts(shiftsData);
-      setLoading(false);
-    });
+  const effectiveClients = clients ?? internalClients;
+  const effectiveCaregivers = caregivers ?? internalCaregivers;
 
-    return () => unsubscribe();
-  }, [clients, caregivers]);
+  const shifts = items.map((s) => ({
+    ...s,
+    clientName:
+      effectiveClients.find((c) => c.id === s.clientId)?.fullName ?? 'Unknown Client',
+    caregiverName:
+      effectiveCaregivers.find((c) => c.id === s.caregiverId)?.name ?? 'Unknown Caregiver',
+  }));
 
-  const createShift = async (shiftData: Omit<Shift, 'shiftId' | 'clientName' | 'caregiverName'>) => {
-    try {
-      const docRef = await addDoc(collection(db, 'shifts'), shiftData);
-      return docRef.id;
-    } catch (error) {
-      console.error('Error creating shift:', error);
-      throw error;
-    }
-  };
+  const createShift = useCallback(
+    async (shiftData: Omit<Shift, 'shiftId' | 'clientName' | 'caregiverName'>) => {
+      // status/hours_worked are derived by the trg_shift_status trigger
+      return add({ ...shiftData, status: 'Scheduled' } as Partial<Shift>);
+    },
+    [add]
+  );
 
-  const updateShift = async (id: string, shiftData: Partial<Shift>) => {
-    try {
-      const shiftRef = doc(db, 'shifts', id);
-      await updateDoc(shiftRef, shiftData);
-    } catch (error) {
-      console.error('Error updating shift:', error);
-      throw error;
-    }
-  };
+  const clockIn = useCallback(
+    async (id: string) => {
+      const { error } = await supabase
+        .from('shifts')
+        .update({ clock_in_time: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    []
+  );
 
-  const deleteShift = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'shifts', id));
-    } catch (error) {
-      console.error('Error deleting shift:', error);
-      throw error;
-    }
-  };
-
-  // Automatic status updates based on time and clock events
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      shifts.forEach(async (shift) => {
-        if (shift.status === 'Completed' || shift.status === 'Cancelled') return;
-
-        let newStatus: Shift['status'] | null = null;
-
-        if (shift.clockOutTime) {
-          // If clockOutTime exists → Completed
-          newStatus = 'Completed';
-        } else if (shift.clockInTime) {
-          // If clockInTime exists → In Progress
-          newStatus = 'In Progress';
-        } else if (now >= shift.endTime) {
-          // If no clockInTime and now > endTime → No Show
-          newStatus = 'No Show';
-        } else if (now >= shift.startTime) {
-          // If now >= startTime AND no clockInTime → Late
-          newStatus = 'Late';
-        } else {
-          // If now < startTime → Scheduled
-          newStatus = 'Scheduled';
-        }
-
-        if (newStatus && newStatus !== shift.status) {
-          try {
-            await updateShift(shift.shiftId, { status: newStatus });
-          } catch (error) {
-            console.error('Error updating shift status automatically:', error);
-          }
-        }
-      });
-    }, 60000); // Check every minute
-
-    return () => clearInterval(interval);
-  }, [shifts, updateShift]);
+  const clockOut = useCallback(
+    async (id: string) => {
+      const { error } = await supabase
+        .from('shifts')
+        .update({ clock_out_time: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    []
+  );
 
   return {
     shifts,
     loading,
     createShift,
-    updateShift,
-    deleteShift
+    updateShift: update,
+    deleteShift: remove,
+    clockIn,
+    clockOut,
+    clients: effectiveClients,
+    caregivers: effectiveCaregivers,
   };
 }

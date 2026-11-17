@@ -1,8 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
+  experimental: {
+    turbopack: {
+      // Force Turbopack for dev to avoid slow webpack compilation
+      // and eliminate chunk source-map 404s.
+    },
+  },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: true,
@@ -26,6 +31,7 @@ const nextConfig = {
       },
     ],
   },
+  productionBrowserSourceMaps: false,
 };
 
-export default nextConfig;
+module.exports = nextConfig;

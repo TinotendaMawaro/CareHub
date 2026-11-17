@@ -1,0 +1,9 @@
+/mobile
+/supabase
+/.smoke-shots
+*.bak*
+/rotate-admin-password.sql
+/parse_ndis.py
+/fix_categories.py
+/parsed_cost_codes.json
+/cost_codes_seed.sql

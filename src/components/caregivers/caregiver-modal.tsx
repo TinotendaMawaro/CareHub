@@ -32,8 +32,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import type { Caregiver } from "@/lib/types";
-import { storage } from "@/lib/firebase/client";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabase } from "@/lib/supabase/client";
 import { Camera, Upload, MapPin, Clock, CheckCircle, XCircle, Calendar, Users, FileText } from "lucide-react";
 import { getCaregiverAvatarUrl } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +41,6 @@ import { Separator } from "@/components/ui/separator";
 import { useShifts } from "@/hooks/use-shifts";
 import { useTimeOffRequests } from "@/hooks/use-timeOffRequests";
 import { useLocations } from "@/hooks/use-locations";
-import { useClients } from "@/hooks/use-clients";
 
 const caregiverSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -133,10 +131,14 @@ export default function CaregiverModal({
     if (!profilePictureFile) return caregiver?.profilePictureUrl;
 
     try {
-      const storageRef = ref(storage, `caregivers/${Date.now()}_${profilePictureFile.name}`);
-      const snapshot = await uploadBytes(storageRef, profilePictureFile);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      return downloadURL;
+      const path = `caregivers/${Date.now()}_${profilePictureFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, profilePictureFile, { cacheControl: "3600", upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      return data.publicUrl;
     } catch (error) {
       console.error("Error uploading profile picture:", error);
       throw new Error("Failed to upload profile picture");
@@ -168,13 +170,12 @@ export default function CaregiverModal({
     }
   };
 
+  const { shifts, clients } = useShifts();
+  const { timeOffRequests } = useTimeOffRequests();
+  const { locations } = useLocations();
+
   // View mode rendering
   if (isViewMode && caregiver) {
-    const { shifts } = useShifts();
-    const { timeOffRequests } = useTimeOffRequests();
-    const { locations } = useLocations();
-    const { clients } = useClients();
-
     const caregiverShifts = shifts.filter(shift => shift.caregiverId === caregiver.id);
     const currentShift = caregiverShifts.find(shift => shift.status === 'In Progress');
     const pendingLeaves = timeOffRequests.filter(req => req.caregiverId === caregiver.id && req.status === 'Pending');
@@ -271,8 +272,7 @@ export default function CaregiverModal({
               </CardContent>
             </Card>
 
-            {/* EVV Map */}
-            <EVVMap caregiverId={caregiver.id} />
+             {/* EVV placeholder removed */}
           </div>
 
           <DialogFooter>

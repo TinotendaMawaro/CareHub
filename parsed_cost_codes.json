@@ -1,0 +1,434 @@
+[
+  {
+    "code": "01_011_0107_1_1",
+    "description": "Assistance With Self-Care Activities - Standard - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 436.51,
+    "remote_rate": 467.69,
+    "very_remote_rate": 467.69,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0107_1_2",
+    "description": "Assistance With Self-Care Activities - Standard - Weekday Evening",
+    "unit": "Hour",
+    "national_rate": 490.23,
+    "remote_rate": 521.45,
+    "very_remote_rate": 521.45,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0107_1_3",
+    "description": "Assistance With Self-Care Activities - Standard - Weekday Night",
+    "unit": "Hour",
+    "national_rate": 436.51,
+    "remote_rate": 467.69,
+    "very_remote_rate": 467.69,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0107_1_4",
+    "description": "Assistance With Self-Care Activities - Standard - Saturday",
+    "unit": "Hour",
+    "national_rate": 521.89,
+    "remote_rate": 553.12,
+    "very_remote_rate": 553.12,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0107_1_5",
+    "description": "Assistance With Self-Care Activities - Standard - Sunday",
+    "unit": "Hour",
+    "national_rate": 607.34,
+    "remote_rate": 638.56,
+    "very_remote_rate": 638.56,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0107_1_6",
+    "description": "Assistance With Self-Care Activities - Standard - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 692.78,
+    "remote_rate": 724.01,
+    "very_remote_rate": 724.01,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0108_1_1",
+    "description": "Assistance With Self-Care Activities - Standard - Weekday Daytime",
+    "unit": "Each",
+    "national_rate": 87.3,
+    "remote_rate": 93.54,
+    "very_remote_rate": 93.54,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0110_1_1",
+    "description": "Assistance With Self-Care Activities - Higher Intensities - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 56.69,
+    "remote_rate": 60.66,
+    "very_remote_rate": 60.66,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0110_1_2",
+    "description": "Assistance With Self-Care Activities - Higher Intensities - Weekday Evening",
+    "unit": "Hour",
+    "national_rate": 64.89,
+    "remote_rate": 69.41,
+    "very_remote_rate": 69.41,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0110_1_3",
+    "description": "Assistance With Self-Care Activities - Higher Intensities - Saturday",
+    "unit": "Hour",
+    "national_rate": 82.04,
+    "remote_rate": 87.73,
+    "very_remote_rate": 87.73,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0110_1_4",
+    "description": "Assistance With Self-Care Activities - Higher Intensities - Sunday",
+    "unit": "Hour",
+    "national_rate": 105.38,
+    "remote_rate": 112.73,
+    "very_remote_rate": 112.73,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_011_0110_1_5",
+    "description": "Assistance With Self-Care Activities - Higher Intensities - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 128.71,
+    "remote_rate": 137.73,
+    "very_remote_rate": 137.73,
+    "category": "Self-Care"
+  },
+  {
+    "code": "01_012_0120_1_1",
+    "description": "Assistance With Travel and Transport - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 35.82,
+    "remote_rate": 38.31,
+    "very_remote_rate": 38.31,
+    "category": "Transport"
+  },
+  {
+    "code": "01_012_0120_1_2",
+    "description": "Assistance With Travel and Transport - Saturday",
+    "unit": "Hour",
+    "national_rate": 44.2,
+    "remote_rate": 47.27,
+    "very_remote_rate": 47.27,
+    "category": "Transport"
+  },
+  {
+    "code": "01_012_0120_1_3",
+    "description": "Assistance With Travel and Transport - Sunday",
+    "unit": "Hour",
+    "national_rate": 57.12,
+    "remote_rate": 61.07,
+    "very_remote_rate": 61.07,
+    "category": "Transport"
+  },
+  {
+    "code": "01_012_0120_1_4",
+    "description": "Assistance With Travel and Transport - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 70.04,
+    "remote_rate": 74.88,
+    "very_remote_rate": 74.88,
+    "category": "Transport"
+  },
+  {
+    "code": "01_013_0130_1_1",
+    "description": "Community Access - Standard - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 65.11,
+    "remote_rate": 69.67,
+    "very_remote_rate": 69.67,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0130_1_2",
+    "description": "Community Access - Standard - Saturday",
+    "unit": "Hour",
+    "national_rate": 81.39,
+    "remote_rate": 87.04,
+    "very_remote_rate": 87.04,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0130_1_3",
+    "description": "Community Access - Standard - Sunday",
+    "unit": "Hour",
+    "national_rate": 104.98,
+    "remote_rate": 112.28,
+    "very_remote_rate": 112.28,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0130_1_4",
+    "description": "Community Access - Standard - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 128.57,
+    "remote_rate": 137.53,
+    "very_remote_rate": 137.53,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0131_1_1",
+    "description": "Community Access - Higher Intensities - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 73.35,
+    "remote_rate": 78.49,
+    "very_remote_rate": 78.49,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0131_1_2",
+    "description": "Community Access - Higher Intensities - Saturday",
+    "unit": "Hour",
+    "national_rate": 91.69,
+    "remote_rate": 98.07,
+    "very_remote_rate": 98.07,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0131_1_3",
+    "description": "Community Access - Higher Intensities - Sunday",
+    "unit": "Hour",
+    "national_rate": 118.23,
+    "remote_rate": 126.45,
+    "very_remote_rate": 126.45,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_013_0131_1_4",
+    "description": "Community Access - Higher Intensities - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 144.78,
+    "remote_rate": 154.79,
+    "very_remote_rate": 154.79,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_014_0140_1_1",
+    "description": "Short Term Accommodation - Standard - Weekday Daytime",
+    "unit": "Day",
+    "national_rate": 456.21,
+    "remote_rate": 487.45,
+    "very_remote_rate": 487.45,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0140_1_2",
+    "description": "Short Term Accommodation - Standard - Saturday",
+    "unit": "Day",
+    "national_rate": 547.45,
+    "remote_rate": 584.94,
+    "very_remote_rate": 584.94,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0140_1_3",
+    "description": "Short Term Accommodation - Standard - Sunday",
+    "unit": "Day",
+    "national_rate": 638.69,
+    "remote_rate": 682.42,
+    "very_remote_rate": 682.42,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0140_1_4",
+    "description": "Short Term Accommodation - Standard - Public Holiday",
+    "unit": "Day",
+    "national_rate": 729.94,
+    "remote_rate": 779.91,
+    "very_remote_rate": 779.91,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0141_1_1",
+    "description": "Short Term Accommodation - Higher Intensity - Weekday Daytime",
+    "unit": "Day",
+    "national_rate": 598.34,
+    "remote_rate": 639.44,
+    "very_remote_rate": 639.44,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0141_1_2",
+    "description": "Short Term Accommodation - Higher Intensity - Saturday",
+    "unit": "Day",
+    "national_rate": 718.01,
+    "remote_rate": 767.33,
+    "very_remote_rate": 767.33,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0141_1_3",
+    "description": "Short Term Accommodation - Higher Intensity - Sunday",
+    "unit": "Day",
+    "national_rate": 837.68,
+    "remote_rate": 895.22,
+    "very_remote_rate": 895.22,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_014_0141_1_4",
+    "description": "Short Term Accommodation - Higher Intensity - Public Holiday",
+    "unit": "Day",
+    "national_rate": 957.34,
+    "remote_rate": 1023.1,
+    "very_remote_rate": 1023.1,
+    "category": "Short Term Accommodation"
+  },
+  {
+    "code": "01_015_0150_1_1",
+    "description": "Supported Independent Living (SIL) - Standard - Weekday Daytime",
+    "unit": "Day",
+    "national_rate": 412.56,
+    "remote_rate": 440.78,
+    "very_remote_rate": 440.78,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0150_1_2",
+    "description": "Supported Independent Living (SIL) - Standard - Saturday",
+    "unit": "Day",
+    "national_rate": 495.07,
+    "remote_rate": 529.14,
+    "very_remote_rate": 529.14,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0150_1_3",
+    "description": "Supported Independent Living (SIL) - Standard - Sunday",
+    "unit": "Day",
+    "national_rate": 577.59,
+    "remote_rate": 617.49,
+    "very_remote_rate": 617.49,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0150_1_4",
+    "description": "Supported Independent Living (SIL) - Standard - Public Holiday",
+    "unit": "Day",
+    "national_rate": 660.1,
+    "remote_rate": 705.85,
+    "very_remote_rate": 705.85,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0151_1_1",
+    "description": "Supported Independent Living (SIL) - Higher Intensity - Weekday Daytime",
+    "unit": "Day",
+    "national_rate": 534.33,
+    "remote_rate": 571.18,
+    "very_remote_rate": 571.18,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0151_1_2",
+    "description": "Supported Independent Living (SIL) - Higher Intensity - Saturday",
+    "unit": "Day",
+    "national_rate": 641.19,
+    "remote_rate": 684.42,
+    "very_remote_rate": 684.42,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0151_1_3",
+    "description": "Supported Independent Living (SIL) - Higher Intensity - Sunday",
+    "unit": "Day",
+    "national_rate": 748.06,
+    "remote_rate": 798.65,
+    "very_remote_rate": 798.65,
+    "category": "SIL"
+  },
+  {
+    "code": "01_015_0151_1_4",
+    "description": "Supported Independent Living (SIL) - Higher Intensity - Public Holiday",
+    "unit": "Day",
+    "national_rate": 854.92,
+    "remote_rate": 913.89,
+    "very_remote_rate": 913.89,
+    "category": "SIL"
+  },
+  {
+    "code": "01_016_0160_1_1",
+    "description": "Group and Centre Based Activities - Standard - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 48.92,
+    "remote_rate": 52.33,
+    "very_remote_rate": 52.33,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_016_0160_1_2",
+    "description": "Group and Centre Based Activities - Standard - Saturday",
+    "unit": "Hour",
+    "national_rate": 61.15,
+    "remote_rate": 65.42,
+    "very_remote_rate": 65.42,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_016_0160_1_3",
+    "description": "Group and Centre Based Activities - Standard - Sunday",
+    "unit": "Hour",
+    "national_rate": 78.94,
+    "remote_rate": 84.44,
+    "very_remote_rate": 84.44,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_016_0160_1_4",
+    "description": "Group and Centre Based Activities - Standard - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 96.72,
+    "remote_rate": 103.47,
+    "very_remote_rate": 103.47,
+    "category": "Community Access"
+  },
+  {
+    "code": "01_017_0170_1_1",
+    "description": "Individualised Living Options - Weekday Daytime",
+    "unit": "Hour",
+    "national_rate": 58.73,
+    "remote_rate": 62.83,
+    "very_remote_rate": 62.83,
+    "category": "Individualised Living"
+  },
+  {
+    "code": "01_017_0170_1_2",
+    "description": "Individualised Living Options - Saturday",
+    "unit": "Hour",
+    "national_rate": 73.41,
+    "remote_rate": 78.54,
+    "very_remote_rate": 78.54,
+    "category": "Individualised Living"
+  },
+  {
+    "code": "01_017_0170_1_3",
+    "description": "Individualised Living Options - Sunday",
+    "unit": "Hour",
+    "national_rate": 94.69,
+    "remote_rate": 101.27,
+    "very_remote_rate": 101.27,
+    "category": "Individualised Living"
+  },
+  {
+    "code": "01_017_0170_1_4",
+    "description": "Individualised Living Options - Public Holiday",
+    "unit": "Hour",
+    "national_rate": 115.98,
+    "remote_rate": 124.0,
+    "very_remote_rate": 124.0,
+    "category": "Individualised Living"
+  }
+]

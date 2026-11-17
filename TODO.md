@@ -1,33 +1,44 @@
-# CareHub Phase 1: Core Infrastructure & EVV System - Data Models Enhancement
+# CareHub TODO
 
-## Current Task: Enhance Data Models with Missing Fields
+## Phase 0: Data model and data
+- [x] Create Phase 0 migration SQL for new pricing/scheduling model
+- [x] Create shared pricing/resolution library with tests
+- [x] Update shift modal, drawer, roster, and assign caregivers to real CareHub schema
+- [ ] Wire dashboard widgets and remove placeholders
+- [ ] Summarize integration steps, test plan, and next phases
 
-### Completed Tasks
-- [x] Analyze current types.ts and identify missing models
-- [x] Create implementation plan for new data types
-- [x] Get user approval for plan
+## Phase 1: Design system
+- [ ] Tokens in globals.css and Tailwind config
+- [ ] Shared primitives in components/ui
+- [ ] Sidebar groups and command palette
 
-### Pending Tasks
-- [x] Add new TypeScript interfaces to src/lib/types.ts:
-  - [x] Expense: Track travel, supplies, etc. (amount, category, date, caregiverId, clientId)
-  - [x] Mileage: Track vehicle usage (start/end locations, distance, date, caregiverId)
-  - [x] CarePlan: Client care plans (goals, tasks, frequency, assigned caregivers)
-  - [x] Assessment: Client assessments (type, date, results, notes)
-  - [x] Billing: Invoices (clientId, amount, services, status, dueDate)
-  - [x] Payroll: Caregiver payroll (hours, rate, deductions, period)
-  - [x] Form: Generic forms for documentation (fields, responses, status)
-- [ ] Create hooks for new data types (use-expenses.tsx, use-mileage.tsx, etc.)
-  - [ ] Create use-assessment.tsx hook
-  - [ ] Create use-payroll.tsx hook
-- [ ] Update Firestore rules for new collections
-- [ ] Implement components to display/manage these new data types
-- [ ] Integrate into existing pages (add expense tracking to shifts)
+## Phase 2: Dashboard
+- [ ] Live stat cards
+- [ ] Widgets: Who's on now, Late for work, Upcoming shifts, On leave, Birthdays, Work anniversaries, Message wall
+- [ ] Money strip for admins
 
-### Next Phase Tasks (After Data Models)
-- [ ] Implement real geolocation API integration for live location tracking
-- [ ] Add location history and compliance monitoring logic
-- [ ] Create comprehensive EVV compliance dashboard
-- [ ] Add location-based alerts and notifications system
-- [ ] Implement real-time notifications with FCM push notifications
-- [ ] Integrate actual map service (Google Maps/Mapbox) in EVV components
-- [ ] Add real-time updates throughout the app
+## Phase 3: Scheduling
+- [ ] Roster by participant
+- [ ] Schedule by support worker
+- [ ] Calendar view
+- [ ] List view with bulk actions
+
+## Phase 4: Shift notes
+- [ ] Live notes in shift drawer
+- [ ] Filters and follow-up flag
+
+## Phase 5: Participants and support workers
+- [ ] Participant profile page
+- [ ] Support worker profile page
+
+## Phase 6: Pricing admin, reports, payroll
+- [ ] Pricing and pay admin page
+- [ ] Reports with CSV export
+- [ ] Invoice and payroll exports
+
+## Phase 7: Quality
+- [ ] Row Level Security for mobile app
+- [ ] React Query plus realtime invalidation
+- [ ] Unit tests for resolve_segments
+- [ ] Playwright smoke tests
+- [ ] Type check and lint clean

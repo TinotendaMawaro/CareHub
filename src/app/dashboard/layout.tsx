@@ -12,9 +12,9 @@ export default function DashboardLayout({
     <AuthGuard>
       <SidebarProvider>
           <AppSidebar />
-          <div className="flex-1 flex flex-col min-h-screen">
+          <div className="flex-1 min-w-0 flex flex-col min-h-screen">
             <AppHeader />
-            <main className="flex-1 bg-muted/40 p-2 sm:p-4 md:p-6">{children}</main>
+            <main className="flex-1 mesh-bg p-3 sm:p-5 md:p-8 animate-fade-up">{children}</main>
           </div>
       </SidebarProvider>
     </AuthGuard>

@@ -3,8 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Bell, Home, LineChart, Package, Package2, Search, ShoppingCart, Users, Upload } from "lucide-react";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { updateProfile } from "firebase/auth";
+import { supabase } from "@/lib/supabase/client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +22,6 @@ import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { SidebarTrigger } from "../ui/sidebar";
 import AppSidebar from "./app-sidebar";
 import { useAuth } from "@/hooks/use-auth";
-import { storage } from "@/lib/firebase/client";
 import { NotificationDropdown } from "@/components/ui/notification-dropdown";
 import { useNotifications } from "@/hooks/use-notifications";
 
@@ -39,7 +37,6 @@ export function AppHeader() {
     markAsRead,
     markAllAsRead,
     clearAll,
-    addTestNotification,
   } = useNotifications();
 
   const handleProfileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,12 +45,25 @@ export function AppHeader() {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `profile-pictures/${user.uid}`);
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
-      await updateProfile(user, { photoURL: downloadURL });
-      // Force re-render by updating state or trigger auth state change
-      window.location.reload(); // Simple way to refresh avatar
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { cacheControl: "3600", upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+
+      await supabase.auth.updateUser({
+        data: { avatar_url: urlData.publicUrl },
+      });
+      await supabase
+        .from("profiles")
+        .update({ avatar_url: urlData.publicUrl })
+        .eq("id", user.id);
+
+      window.location.reload();
     } catch (error) {
       console.error("Error uploading profile picture:", error);
     } finally {
@@ -62,7 +72,7 @@ export function AppHeader() {
   };
 
   return (
-    <header className="flex h-14 items-center gap-2 sm:gap-4 border-b bg-card px-2 sm:px-4 lg:h-[60px] lg:px-6">
+    <header className="sticky top-0 z-50 flex h-14 items-center gap-2 border-b border-border/60 glass-bar px-2 sm:gap-4 sm:px-4 lg:h-[60px] lg:px-6">
       <SidebarTrigger className="md:hidden" />
       <div className="w-full flex-1">
         <form>
@@ -82,19 +92,18 @@ export function AppHeader() {
         onMarkAsRead={markAsRead}
         onMarkAllAsRead={markAllAsRead}
         onClearAll={clearAll}
-        onAddTestNotification={addTestNotification}
       />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="rounded-full">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={user?.photoURL || (userAvatar?.imageUrl)} alt="User avatar" />
-              <AvatarFallback>{user?.displayName?.charAt(0) || "A"}</AvatarFallback>
+              <AvatarImage src={(user?.user_metadata?.avatar_url as string | undefined) || (userAvatar?.imageUrl)} alt="User avatar" />
+              <AvatarFallback>{(user?.user_metadata?.full_name as string | undefined)?.charAt(0) || "A"}</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>{user?.displayName || "Admin"}</DropdownMenuLabel>
+          <DropdownMenuLabel>{(user?.user_metadata?.full_name as string | undefined) || "Admin"}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <label className="cursor-pointer flex items-center gap-2">
@@ -112,7 +121,7 @@ export function AppHeader() {
           <DropdownMenuItem>Settings</DropdownMenuItem>
           <DropdownMenuItem>Support</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={logout}>
+          <DropdownMenuItem onClick={() => logout(true)}>
             Logout
           </DropdownMenuItem>
         </DropdownMenuContent>

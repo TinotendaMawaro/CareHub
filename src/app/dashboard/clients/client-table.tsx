@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
           <TableHead className="hidden md:table-cell">Emergency Contact</TableHead>
           <TableHead className="hidden lg:table-cell">Diagnosis</TableHead>
           <TableHead>Assigned Caregivers</TableHead>
+          <TableHead>Profile</TableHead>
           <TableHead>Schedule</TableHead>
           <TableHead>
             <span className="sr-only">Actions</span>
@@ -52,7 +54,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
       <TableBody>
         {clients.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
+            <TableCell colSpan={10} className="text-center py-4 text-muted-foreground">
               No clients found.
             </TableCell>
           </TableRow>
@@ -77,6 +79,11 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
                 <Badge variant="outline">{client.diagnosis}</Badge>
               </TableCell>
               <TableCell>{client.assignedCaregivers?.length || 0} assigned</TableCell>
+              <TableCell>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/dashboard/clients/${client.id}`}>Profile</Link>
+                </Button>
+              </TableCell>
               <TableCell>
                 <Button
                   size="sm"

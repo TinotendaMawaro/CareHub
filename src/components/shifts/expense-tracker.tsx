@@ -78,7 +78,7 @@ export default function ExpenseTracker({
 
     try {
       const expenseData: Omit<Expense, 'id'> = {
-        caregiverId: caregiverId || user.uid,
+        caregiverId: caregiverId || user.id,
         clientId: clientId,
         shiftId: shiftId,
         category: data.category,

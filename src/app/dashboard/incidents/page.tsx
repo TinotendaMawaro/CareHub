@@ -7,11 +7,9 @@ import {
 import IncidentList from "./incident-list";
 import IncidentForm from "./incident-form";
 import { useIncidents } from "@/hooks/use-incidents";
-import { useClients } from "@/hooks/use-clients";
 
 export default function IncidentsPage() {
-  const { incidents, loading: incidentsLoading, updateIncident, addIncident } = useIncidents();
-  const { clients } = useClients();
+  const { incidents, loading: incidentsLoading, updateIncident, addIncident, clients } = useIncidents();
 
   const handleStatusChange = async (incidentId: string, newStatus: string) => {
     await updateIncident(incidentId, { status: newStatus as any });

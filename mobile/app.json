@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "CareHub",
+    "slug": "carehub-staff",
+    "scheme": "carehub",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.carehub.staff",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "CareHub checks that you are at the participant's address when you start a shift."
+      }
+    },
+    "android": {
+      "package": "com.carehub.staff",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "CareHub checks that you are at the participant's address when you start a shift."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach photos to incident reports and onboarding documents.",
+          "cameraPermission": "Take photos for incident reports and onboarding documents."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}
