@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from "r
 import { useRouter } from "next/navigation";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
+import { MfaGate } from "@/components/auth/mfa-gate";
 import { TermsGate } from "@/components/auth/terms-gate";
 
 export type AppRole = "admin" | "manager" | "office" | "caregiver";
@@ -143,5 +144,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <TermsGate>{children}</TermsGate>;
+  return (
+    <MfaGate>
+      <TermsGate>{children}</TermsGate>
+    </MfaGate>
+  );
 }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { FileUp, Plus, Upload } from "lucide-react";
+import { parsePriceBook, type PriceBookParse } from "@/lib/price-book";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +19,89 @@ import { supabase } from "@/lib/supabase/client";
 
 const BANDS = ["weekday_day", "weekday_evening", "weekday_night", "saturday", "sunday", "public_holiday", "any"];
 const selectCls = "flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
+
+/** Bulk price-book import: paste rows or upload the NDIS price limits CSV. Admin only (RLS enforces it too). */
+function ImportPriceBookCard({ onDone }: { onDone: () => Promise<void> }) {
+  const { toast } = useToast();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const parsed: PriceBookParse | null = useMemo(() => (text.trim() ? parsePriceBook(text) : null), [text]);
+
+  async function readFile(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) return toast({ title: "File too large", description: "Keep imports under 10 MB.", variant: "destructive" });
+    setText(await file.text());
+  }
+
+  async function runImport() {
+    if (!parsed || parsed.rows.length === 0) return;
+    setBusy(true);
+    try {
+      const fam = await supabase.from("support_families").upsert(
+        parsed.families.map((f) => ({ ...f, default_worker_level: "level_2" })),
+        { onConflict: "family_key", ignoreDuplicates: true },
+      );
+      if (fam.error) throw fam.error;
+      for (let i = 0; i < parsed.rows.length; i += 200) {
+        const chunk = parsed.rows.slice(i, i + 200).map(({ family_label: _label, ...row }) => row);
+        const { error } = await supabase.from("support_items").upsert(chunk, { onConflict: "item_number" });
+        if (error) throw error;
+      }
+      toast({ title: `Imported ${parsed.rows.length} cost codes`, description: `${parsed.families.length} support families, ${parsed.skipped} rows skipped.` });
+      setText("");
+      await onDone();
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base"><FileUp className="h-4 w-4" />Import a price book</CardTitle>
+        <CardDescription>
+          Upload the NDIS Pricing Arrangements CSV, or paste rows with item number, name, unit and prices.
+          Time of day, sleepover and support family are worked out from each item name. Existing item numbers are updated, nothing is deleted.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Input type="file" accept=".csv,.tsv,.txt" className="w-72" onChange={(e) => { void readFile(e.target.files?.[0]); e.target.value = ""; }} />
+          <span className="text-sm text-muted-foreground">or paste below</span>
+        </div>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={4}
+          className="font-mono text-xs"
+          placeholder={'01_002_0107_1_1,Assistance With Self-Care Activities - Standard - Weekday Night,Hour,$82.57,$115.60,$123.86'}
+        />
+        {parsed && (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            {parsed.rows.length === 0 ? (
+              <p className="text-muted-foreground">No cost codes recognised yet. Rows need an NDIS item number like 01_002_0107_1_1 and a price.</p>
+            ) : (
+              <>
+                <p className="font-medium">{parsed.rows.length} cost codes across {parsed.families.length} families ready to import{parsed.skipped > 0 && `, ${parsed.skipped} rows skipped`}.</p>
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {parsed.rows.slice(0, 5).map((r) => (
+                    <li key={r.item_number} className="font-mono">{r.item_number} · {r.name} · {r.time_band}{r.is_sleepover ? " · sleepover" : ""} · {money(r.price_national)}/{r.unit.toLowerCase()}</li>
+                  ))}
+                  {parsed.rows.length > 5 && <li>…and {parsed.rows.length - 5} more</li>}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+        <Button onClick={runImport} disabled={busy || !parsed || parsed.rows.length === 0}>
+          <Upload className="mr-1 h-4 w-4" />{busy ? "Importing..." : `Import${parsed?.rows.length ? ` ${parsed.rows.length} cost codes` : ""}`}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function PricingPage() {
   const { isAdmin } = useAuth();
@@ -86,6 +171,7 @@ export default function PricingPage() {
         <TabsList><TabsTrigger value="items">Cost codes</TabsTrigger><TabsTrigger value="rates">Worker pay rates</TabsTrigger><TabsTrigger value="holidays">Public holidays</TabsTrigger></TabsList>
 
         <TabsContent value="items" className="space-y-4">
+          {isAdmin && <ImportPriceBookCard onDone={load} />}
           {isAdmin && (
             <Card>
               <CardHeader><CardTitle className="text-base">Add a cost code</CardTitle><CardDescription>Copy the item number and prices from the current NDIS Pricing Arrangements and Price Limits.</CardDescription></CardHeader>

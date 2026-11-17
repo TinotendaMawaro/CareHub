@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, UserPlus } from "lucide-react";
+import { Copy, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,11 +26,31 @@ export default function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", role: "caregiver", workerLevel: "level_2" });
   const [created, setCreated] = useState<{ email: string; tempPassword: string } | null>(null);
+  const [mfaOn, setMfaOn] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("profiles").select("id,email,first_name,last_name,phone,role,active").order("first_name");
+    const [{ data }, { data: mfa }] = await Promise.all([
+      supabase.from("profiles").select("id,email,first_name,last_name,phone,role,active").order("first_name"),
+      supabase.rpc("mfa_enabled_users"),
+    ]);
     setPeople((data ?? []) as Person[]);
+    setMfaOn(new Set(((mfa ?? []) as unknown[]).map((r) => (typeof r === "string" ? r : String((r as Record<string, unknown>).mfa_enabled_users)))));
   }, []);
+
+  async function resetMfa(p: Person) {
+    const who = [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email;
+    if (!window.confirm(`Reset two-factor authentication for ${who}? Use this if they lost their phone. They can sign in with just their password until they set it up again.`)) return;
+    const { data: s } = await supabase.auth.getSession();
+    const res = await fetch("/api/staff/reset-mfa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.session?.access_token}` },
+      body: JSON.stringify({ userId: p.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return toast({ title: "Could not reset 2FA", description: json.error ?? `Request failed (${res.status})`, variant: "destructive" });
+    toast({ title: `2FA reset for ${who}`, description: "If your organisation requires 2FA, they'll be asked to set it up again at their next sign-in." });
+    await load();
+  }
   useEffect(() => { void load(); }, [load]);
 
   async function invite() {
@@ -88,7 +108,7 @@ export default function UsersPage() {
       <Card>
         <CardContent className="pt-6">
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead><TableHead className="text-right">Active</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead><TableHead>2FA</TableHead><TableHead className="text-right">Active</TableHead></TableRow></TableHeader>
             <TableBody>
               {people.map((p) => (
                 <TableRow key={p.id}>
@@ -96,6 +116,18 @@ export default function UsersPage() {
                   <TableCell>{p.email}</TableCell>
                   <TableCell><Badge variant="secondary">{ROLE_LABEL[p.role] ?? p.role}</Badge></TableCell>
                   <TableCell>{p.phone ?? ""}</TableCell>
+                  <TableCell>
+                    {mfaOn.has(p.id) ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="gap-1 border-emerald-300 text-emerald-700"><ShieldCheck className="h-3 w-3" />On</Badge>
+                        {isAdmin && p.id !== user?.id && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => void resetMfa(p)}>Reset</Button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><ShieldOff className="h-3 w-3" />Off</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right"><Switch checked={p.active} disabled={!isAdmin || p.id === user?.id} onCheckedChange={(v) => void setActive(p, v)} aria-label="Active" /></TableCell>
                 </TableRow>
               ))}

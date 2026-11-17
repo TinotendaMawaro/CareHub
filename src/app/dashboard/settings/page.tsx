@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageIcon, Upload } from "lucide-react";
+import { ImageIcon, ShieldCheck, Upload } from "lucide-react";
+import { TotpEnrollPanel } from "@/components/auth/mfa-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -82,6 +83,7 @@ export default function SettingsPage() {
           <TabsTrigger value="scheduling">Shifts and location</TabsTrigger>
           <TabsTrigger value="invoicing">Invoicing and Xero</TabsTrigger>
           <TabsTrigger value="payroll">Payroll</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="terms">Terms and conditions</TabsTrigger>
         </TabsList>
 
@@ -174,9 +176,85 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="security">
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" />Two-factor authentication</CardTitle>
+                <CardDescription>An authenticator app on each person's phone adds a second check at sign-in, so a stolen password alone can't open the dashboard.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox disabled={ro} checked={draft.requireMfa} onCheckedChange={(v) => set("requireMfa", !!v)} />
+                  <span>
+                    <b>Require two-factor authentication for all office users.</b><br />
+                    <span className="text-muted-foreground">Admins, managers and office staff without it will be asked to set it up the next time they open the dashboard. Support workers on the mobile app are not affected.</span>
+                  </span>
+                </label>
+                {!ro && draft.requireMfa !== org.requireMfa && <p className="mt-2 text-xs text-muted-foreground">Press "Save changes" above to apply.</p>}
+              </CardContent>
+            </Card>
+            <TwoFactorCard />
+          </div>
+        </TabsContent>
+
         <TabsContent value="terms"><TermsEditor canEdit={isAdmin} /></TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function TwoFactorCard() {
+  const { toast } = useToast();
+  const [status, setStatus] = useState<"loading" | "off" | "on" | "setup">("loading");
+  const [factorId, setFactorId] = useState<string | null>(null);
+
+  const load = async () => {
+    const { data } = await supabase.auth.mfa.listFactors();
+    const verified = data?.totp.find((f) => f.status === "verified");
+    setFactorId(verified?.id ?? null);
+    setStatus(verified ? "on" : "off");
+  };
+  useEffect(() => { void load(); }, []);
+
+  async function remove() {
+    if (!factorId || !window.confirm("Turn off two-factor authentication for your account?")) return;
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return toast({ title: "Could not turn it off", description: error.message, variant: "destructive" });
+    toast({ title: "Two-factor authentication is off for your account" });
+    await load();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Your account</CardTitle>
+        <CardDescription>Two-factor authentication for the account you are signed in with now.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {status === "loading" && <p className="text-sm text-muted-foreground">Checking...</p>}
+        {status === "on" && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm"><span className="font-medium text-emerald-600">On.</span> You'll be asked for a code from your authenticator app each time you sign in.</p>
+            <Button variant="outline" size="sm" onClick={remove}>Turn off</Button>
+          </div>
+        )}
+        {status === "off" && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">Not set up yet. You'll need an authenticator app on your phone.</p>
+            <Button size="sm" onClick={() => setStatus("setup")}>Set up</Button>
+          </div>
+        )}
+        {status === "setup" && (
+          <TotpEnrollPanel
+            onDone={() => {
+              toast({ title: "Two-factor authentication is on" });
+              void load();
+            }}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

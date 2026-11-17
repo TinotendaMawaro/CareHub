@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Image, ScrollView, Text, View } from 'react-native';
+import { TwoFactorCard } from '@/components/two-factor-card';
 import { Banner, Button, Card, Input, Label, Muted, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
 import { formatDay } from '@/lib/format';
@@ -92,6 +93,8 @@ export default function Profile() {
           <Input value={pw} onChangeText={setPw} secureTextEntry placeholder="New password (8+ characters)" autoComplete="new-password" />
           <Button title="Change password" kind="outline" onPress={changePassword} disabled={pw.length < 8} />
         </Card>
+
+        <TwoFactorCard />
 
         <Button title="Sign out" kind="danger" onPress={signOut} />
       </ScrollView>

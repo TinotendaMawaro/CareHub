@@ -53,6 +53,7 @@ import { OnLeaveWidget } from "@/components/dashboard/on-leave-widget";
 import { BirthdaysWidget } from "@/components/dashboard/birthdays-widget";
 import { WorkAnniversariesWidget } from "@/components/dashboard/work-anniversaries-widget";
 import { MessageWallWidget } from "@/components/dashboard/message-wall-widget";
+import { MissedClockInsWidget } from "@/components/dashboard/missed-clockins-widget";
 import { AlertItem } from "@/components/dashboard/alert-item";
 
 export default function DashboardPage() {
@@ -202,8 +203,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Budget Risk & Waitlist */}
-        <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
+        {/* Budget Risk, Waitlist & Missed Clock-ins */}
+        <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
           <Card data-tour="budgets-risk" className="transition-all duration-200 hover:shadow-lg hover:scale-[1.02]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -274,6 +275,8 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+
+          <MissedClockInsWidget />
         </div>
 
         {/* Compact Widgets */}

@@ -21,6 +21,7 @@ const DEFAULT_ORG: Organisation = {
   enforceGeofenceOnEnd: false,
   clockInEarlyMinutes: 15,
   requireNoteOnEnd: true,
+  requireMfa: false,
 };
 
 export function mapOrganisation(r: any): Organisation {
@@ -50,6 +51,7 @@ export function mapOrganisation(r: any): Organisation {
     enforceGeofenceOnEnd: !!r.enforce_geofence_on_end,
     clockInEarlyMinutes: Number(r.clock_in_early_minutes ?? DEFAULT_ORG.clockInEarlyMinutes),
     requireNoteOnEnd: r.require_note_on_end ?? DEFAULT_ORG.requireNoteOnEnd,
+    requireMfa: !!r.require_mfa,
   };
 }
 
@@ -62,7 +64,7 @@ export function toOrganisationRow(d: Partial<Organisation>): Record<string, unkn
     bankDetails: "bank_details", xeroAccountCode: "xero_account_code", xeroTaxType: "xero_tax_type",
     defaultGeofenceRequired: "default_geofence_required", defaultGeofenceRadiusM: "default_geofence_radius_m",
     enforceGeofenceOnEnd: "enforce_geofence_on_end", clockInEarlyMinutes: "clock_in_early_minutes",
-    requireNoteOnEnd: "require_note_on_end",
+    requireNoteOnEnd: "require_note_on_end", requireMfa: "require_mfa",
   };
   const row: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(d)) if (map[k] && v !== undefined) row[map[k]] = v === "" ? null : v;

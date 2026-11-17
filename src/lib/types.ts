@@ -521,6 +521,7 @@ export type Organisation = {
   enforceGeofenceOnEnd: boolean;
   clockInEarlyMinutes: number;
   requireNoteOnEnd: boolean;
+  requireMfa: boolean;
 };
 
 export type Invoice = {

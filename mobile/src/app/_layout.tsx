@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from '@/hooks/use-session';
 
 function Gate() {
-  const { session, wrongRole, onboarding, loading, org } = useSession();
+  const { session, wrongRole, onboarding, needsMfa, loading, org } = useSession();
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -16,7 +16,8 @@ function Gate() {
   }
 
   const signedIn = !!session;
-  const ok = signedIn && !wrongRole;
+  const mfa = signedIn && needsMfa;
+  const ok = signedIn && !mfa && !wrongRole;
   const needsTerms = ok && !!onboarding?.needs_terms;
   const ready = ok && !needsTerms;
 
@@ -25,7 +26,10 @@ function Gate() {
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && wrongRole}>
+      <Stack.Protected guard={mfa}>
+        <Stack.Screen name="mfa" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn && !mfa && wrongRole}>
         <Stack.Screen name="wrong-role" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={needsTerms}>

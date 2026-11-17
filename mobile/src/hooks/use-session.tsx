@@ -13,17 +13,30 @@ type Ctx = {
   wrongRole: boolean;
   org: Org;
   onboarding: Onboarding | null;
+  /** Signed in with a password but 2FA is on for this account and the code hasn't been entered yet. */
+  needsMfa: boolean;
   loading: boolean;
   refreshOnboarding: () => Promise<void>;
+  recheckMfa: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const DEFAULT_ORG: Org = { name: 'CareHub', brandColor: '#2563eb', accentColor: '#4DB6AC', timezone: 'Australia/Sydney', currency: 'AUD' };
 
 const SessionContext = createContext<Ctx>({
-  session: null, me: null, wrongRole: false, org: DEFAULT_ORG, onboarding: null, loading: true,
-  refreshOnboarding: async () => {}, signOut: async () => {},
+  session: null, me: null, wrongRole: false, org: DEFAULT_ORG, onboarding: null, needsMfa: false, loading: true,
+  refreshOnboarding: async () => {}, recheckMfa: async () => {}, signOut: async () => {},
 });
+
+/** True when the account has a verified 2FA factor that this session hasn't passed yet. Fails open. */
+async function mfaPending(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2';
+  } catch {
+    return false;
+  }
+}
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -31,7 +44,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [wrongRole, setWrongRole] = useState(false);
   const [org, setOrg] = useState<Org>(DEFAULT_ORG);
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
+  const [needsMfa, setNeedsMfa] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const recheckMfa = useCallback(async () => setNeedsMfa(await mfaPending()), []);
 
   // Branding is readable before sign-in (name, logo, colours only).
   const loadOrg = useCallback(async (signedIn: boolean) => {
@@ -56,15 +72,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const apply = useCallback(async (next: Session | null) => {
     setSession(next);
     if (!next) {
-      setMe(null); setOnboarding(null); setWrongRole(false);
+      setMe(null); setOnboarding(null); setWrongRole(false); setNeedsMfa(false);
       await loadOrg(false);
       setLoading(false);
       return;
     }
-    const [{ data: profile }, { data: cg }] = await Promise.all([
+    const [{ data: profile }, { data: cg }, pending] = await Promise.all([
       supabase.from('profiles').select('role, active').eq('id', next.user.id).maybeSingle(),
       supabase.from('caregivers').select('id, name').eq('user_id', next.user.id).maybeSingle(),
+      mfaPending(),
     ]);
+    setNeedsMfa(pending);
     const ok = !!profile && profile.active !== false && profile.role === 'caregiver' && !!cg;
     setWrongRole(!ok);
     setMe(ok && cg ? { caregiverId: cg.id, name: cg.name, role: profile!.role } : null);
@@ -83,8 +101,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [apply]);
 
   const value = useMemo<Ctx>(
-    () => ({ session, me, wrongRole, org, onboarding, loading, refreshOnboarding, signOut: async () => void (await supabase.auth.signOut()) }),
-    [session, me, wrongRole, org, onboarding, loading, refreshOnboarding]
+    () => ({ session, me, wrongRole, org, onboarding, needsMfa, loading, refreshOnboarding, recheckMfa, signOut: async () => void (await supabase.auth.signOut()) }),
+    [session, me, wrongRole, org, onboarding, needsMfa, loading, refreshOnboarding, recheckMfa]
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
