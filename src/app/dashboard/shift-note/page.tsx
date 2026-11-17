@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, query, orderBy, doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { supabase } from "@/lib/supabase/client";
+import { refreshOnChange } from "@/lib/supabase/realtime";
+import { mapShiftNote } from "@/lib/supabase/mappers";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -32,23 +33,29 @@ export default function ShiftNotesPage() {
   const { clients } = useClients();
 
   useEffect(() => {
-    const q = query(collection(db, 'shiftNotes'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notes: ShiftNote[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate() || new Date(),
-      })) as ShiftNote[];
-      setShiftNotes(notes);
-      setLoading(false);
-    });
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("shift_notes")
+        .select("*")
+        .order("timestamp", { ascending: false });
+      if (error) throw error;
+      setShiftNotes((data ?? []).map(mapShiftNote));
+    };
 
-    return unsubscribe;
+    void load()
+      .catch((error) => console.error("Error fetching shift notes:", error))
+      .finally(() => setLoading(false));
+
+    return refreshOnChange("shift_notes", load);
   }, []);
 
   const handleStatusUpdate = async (noteId: string, newStatus: ShiftNote['status']) => {
     try {
-      await updateDoc(doc(db, 'shiftNotes', noteId), { status: newStatus });
+      const { error } = await supabase
+        .from("shift_notes")
+        .update({ status: newStatus })
+        .eq("id", noteId);
+      if (error) throw error;
     } catch (error) {
       console.error('Error updating status:', error);
     }

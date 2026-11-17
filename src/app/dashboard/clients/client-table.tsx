@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -40,9 +41,11 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
           <TableHead>Name</TableHead>
           <TableHead>Age</TableHead>
           <TableHead className="hidden md:table-cell">Email</TableHead>
-          <TableHead className="hidden md:table-cell">Phone</TableHead>
+          <TableHead className="hidden md:table-cell">Emergency Contact</TableHead>
           <TableHead className="hidden lg:table-cell">Diagnosis</TableHead>
-          <TableHead>Assigned Caregiver</TableHead>
+          <TableHead>Assigned Caregivers</TableHead>
+          <TableHead>Profile</TableHead>
+          <TableHead>Schedule</TableHead>
           <TableHead>
             <span className="sr-only">Actions</span>
           </TableHead>
@@ -51,7 +54,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
       <TableBody>
         {clients.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-4 text-muted-foreground">
+            <TableCell colSpan={10} className="text-center py-4 text-muted-foreground">
               No clients found.
             </TableCell>
           </TableRow>
@@ -60,22 +63,36 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
             <TableRow key={client.id}>
               <TableCell className="hidden sm:table-cell">
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={client.avatarUrl} alt={client.fullName} />
-                  <AvatarFallback>{client.fullName.charAt(0)}</AvatarFallback>
+                  <AvatarImage src={client.profilePictureUrl} alt={`${client.firstName} ${client.lastName}`} />
+                  <AvatarFallback>{client.firstName.charAt(0)}</AvatarFallback>
                 </Avatar>
               </TableCell>
-              <TableCell className="font-medium">{client.fullName}</TableCell>
-              <TableCell>{client.age}</TableCell>
+              <TableCell className="font-medium">{`${client.firstName} ${client.lastName}`}</TableCell>
+              <TableCell>{new Date().getFullYear() - new Date(client.dateOfBirth).getFullYear()}</TableCell>
               <TableCell className="hidden md:table-cell">
                 {client.email}
               </TableCell>
               <TableCell className="hidden md:table-cell">
-                {client.phone}
+                {client.emergencyContact}
               </TableCell>
               <TableCell className="hidden lg:table-cell">
                 <Badge variant="outline">{client.diagnosis}</Badge>
               </TableCell>
-              <TableCell>{client.assignedCaregiver || 'Unassigned'}</TableCell>
+              <TableCell>{client.assignedCaregivers?.length || 0} assigned</TableCell>
+              <TableCell>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/dashboard/clients/${client.id}`}>Profile</Link>
+                </Button>
+              </TableCell>
+              <TableCell>
+                <Button
+                  size="sm"
+                  onClick={() => onViewSchedule?.(client)}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Schedule
+                </Button>
+              </TableCell>
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -103,7 +120,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
                     )}
                     {onDelete && (
                       <DropdownMenuItem
-                        className="text-destructive"
+                        className="text-red-600 bg-pink-50 hover:bg-pink-100"
                         onClick={() => onDelete(client.id)}
                       >
                         Delete

@@ -8,7 +8,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { useShifts } from "@/hooks/use-shifts"
-import { useCaregivers } from "@/hooks/use-caregivers"
 
 const chartConfig = {
   hours: {
@@ -18,8 +17,7 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export default function CaregiverHoursChart() {
-  const { shifts } = useShifts()
-  const { caregivers } = useCaregivers()
+  const { shifts, caregivers } = useShifts()
 
   // Calculate hours for each caregiver from completed shifts this week
   const chartData = caregivers.map(caregiver => {
@@ -30,14 +28,17 @@ export default function CaregiverHoursChart() {
     )
 
     const totalHours = caregiverShifts.reduce((total, shift) => {
-      const start = new Date(`${shift.date}T${shift.startTime}`)
-      const end = new Date(`${shift.date}T${shift.endTime}`)
+      const start = new Date(shift.startTime)
+      const end = new Date(shift.endTime)
       const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
       return total + hours
     }, 0)
 
+    const nameParts = String(caregiver.name || '').split(' ');
+    const firstName = nameParts[0] || 'Unknown';
+    const initial = nameParts[1]?.charAt(0) || '';
     return {
-      caregiver: caregiver.name.split(' ')[0] + ' ' + (caregiver.name.split(' ')[1]?.charAt(0) || '') + '.',
+      caregiver: firstName + (initial ? ' ' + initial + '.' : ''),
       hours: Math.round(totalHours * 10) / 10 // Round to 1 decimal
     }
   }).filter(item => item.hours > 0) // Only show caregivers with hours

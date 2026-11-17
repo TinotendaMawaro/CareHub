@@ -12,7 +12,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Mail, Phone, MapPin, User, FileText, AlertTriangle } from "lucide-react";
+import { Calendar, Mail, MapPin, User, FileText, AlertTriangle } from "lucide-react";
 import type { Client } from "@/lib/types";
 
 interface ClientDetailsModalProps {
@@ -86,19 +86,14 @@ export default function ClientDetailsModal({
                   <span className="font-medium">Age:</span>
                   <span>{calculateAge(client.dateOfBirth)} years old</span>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">Email:</span>
-                  <span>{client.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">Phone:</span>
-                  <span>{client.phone}</span>
-                </div>
-              </div>
+               </div>
+               <div className="space-y-2">
+                 <div className="flex items-center gap-2 text-sm">
+                   <Mail className="h-4 w-4 text-muted-foreground" />
+                   <span className="font-medium">Email:</span>
+                   <span>{client.email}</span>
+                 </div>
+               </div>
             </div>
           </div>
 
@@ -142,19 +137,17 @@ export default function ClientDetailsModal({
             <h3 className="text-lg font-medium mb-3">Care Information</h3>
             <div className="space-y-3">
               <div>
-                <span className="font-medium text-sm">Assigned Caregiver:</span>
-                <Badge variant="secondary" className="ml-2">
-                  {client.assignedCaregiver || 'Unassigned'}
-                </Badge>
-              </div>
-              <div>
-                <span className="font-medium text-sm">Care Needs:</span>
+                <span className="font-medium text-sm">Assigned Caregivers:</span>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {client.careNeeds.map((need, index) => (
-                    <Badge key={index} variant="outline">
-                      {need}
-                    </Badge>
-                  ))}
+                  {client.assignedCaregivers.length > 0 ? (
+                    client.assignedCaregivers.map((caregiverId, index) => (
+                      <Badge key={caregiverId || index} variant="secondary">
+                        {caregiverId}
+                      </Badge>
+                    ))
+                  ) : (
+                    <Badge variant="secondary">Unassigned</Badge>
+                  )}
                 </div>
               </div>
             </div>

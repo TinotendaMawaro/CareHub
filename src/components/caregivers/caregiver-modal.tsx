@@ -32,10 +32,15 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import type { Caregiver } from "@/lib/types";
-import { storage } from "@/lib/firebase/client";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { Camera, Upload } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
+import { Camera, Upload, MapPin, Clock, CheckCircle, XCircle, Calendar, Users, FileText } from "lucide-react";
 import { getCaregiverAvatarUrl } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useShifts } from "@/hooks/use-shifts";
+import { useTimeOffRequests } from "@/hooks/use-timeOffRequests";
+import { useLocations } from "@/hooks/use-locations";
 
 const caregiverSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -55,6 +60,7 @@ interface CaregiverModalProps {
   onSubmit: (data: Omit<Caregiver, 'id'>) => Promise<void>;
   caregiver?: Caregiver | null;
   loading?: boolean;
+  isViewMode?: boolean;
 }
 
 export default function CaregiverModal({
@@ -62,7 +68,8 @@ export default function CaregiverModal({
   onClose,
   onSubmit,
   caregiver,
-  loading = false
+  loading = false,
+  isViewMode = false
 }: CaregiverModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
@@ -124,10 +131,14 @@ export default function CaregiverModal({
     if (!profilePictureFile) return caregiver?.profilePictureUrl;
 
     try {
-      const storageRef = ref(storage, `caregivers/${Date.now()}_${profilePictureFile.name}`);
-      const snapshot = await uploadBytes(storageRef, profilePictureFile);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      return downloadURL;
+      const path = `caregivers/${Date.now()}_${profilePictureFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, profilePictureFile, { cacheControl: "3600", upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      return data.publicUrl;
     } catch (error) {
       console.error("Error uploading profile picture:", error);
       throw new Error("Failed to upload profile picture");
@@ -142,7 +153,11 @@ export default function CaregiverModal({
         ...data,
         qualifications: data.qualifications.split(',').map(q => q.trim()),
         skills: data.skills.split(',').map(s => s.trim()),
-        profilePictureUrl
+        profilePictureUrl,
+        contractStatus: 'Active',
+        evvCompliance: 'Unknown',
+        clientsWorkedWith: [],
+        clientsInductedFor: []
       });
       onClose();
       form.reset();
@@ -154,6 +169,121 @@ export default function CaregiverModal({
       setIsSubmitting(false);
     }
   };
+
+  const { shifts, clients } = useShifts();
+  const { timeOffRequests } = useTimeOffRequests();
+  const { locations } = useLocations();
+
+  // View mode rendering
+  if (isViewMode && caregiver) {
+    const caregiverShifts = shifts.filter(shift => shift.caregiverId === caregiver.id);
+    const currentShift = caregiverShifts.find(shift => shift.status === 'In Progress');
+    const pendingLeaves = timeOffRequests.filter(req => req.caregiverId === caregiver.id && req.status === 'Pending');
+    const approvedLeaves = timeOffRequests.filter(req => req.caregiverId === caregiver.id && req.status === 'Approved');
+    const recentLocations = locations.filter(loc => loc.caregiverId === caregiver.id).slice(0, 5);
+    const workedClients = clients.filter(client => caregiver.clientsWorkedWith.includes(client.id));
+    const inductedClients = clients.filter(client => caregiver.clientsInductedFor.includes(client.id));
+
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto mx-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={getCaregiverAvatarUrl(caregiver)} alt={caregiver.name} />
+                <AvatarFallback>{caregiver.name.charAt(0)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <h2 className="text-xl font-semibold">{caregiver.name}</h2>
+                <p className="text-sm text-muted-foreground">Caregiver Profile</p>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Status Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Status Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Availability</p>
+                    <Badge variant={caregiver.availability === 'Available' ? 'default' : 'secondary'}>
+                      {caregiver.availability}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Contract Status</p>
+                    <Badge variant={caregiver.contractStatus === 'Active' ? 'default' : 'destructive'}>
+                      {caregiver.contractStatus}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium">EVV Compliance</p>
+                    <Badge variant={caregiver.evvCompliance === 'On Location' ? 'default' : 'secondary'}>
+                      {caregiver.evvCompliance}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Current Shift</p>
+                    <p className="text-sm">{currentShift ? `${currentShift.clientName} (${currentShift.status})` : 'No active shift'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Work History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Work History
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p className="text-sm"><strong>Assigned & Past Shifts:</strong> {caregiverShifts.length} shifts</p>
+                  <p className="text-sm"><strong>Clients Worked With:</strong> {workedClients.length} clients</p>
+                  <p className="text-sm"><strong>Clients Inducted For:</strong> {inductedClients.length} clients</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Leave Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Leave Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <p className="text-sm"><strong>Pending Leave:</strong> {pendingLeaves.length} requests</p>
+                  <p className="text-sm"><strong>Approved Leave:</strong> {approvedLeaves.length} requests</p>
+                </div>
+              </CardContent>
+            </Card>
+
+             {/* EVV placeholder removed */}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

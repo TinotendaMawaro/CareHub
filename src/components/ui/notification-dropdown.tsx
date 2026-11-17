@@ -21,7 +21,6 @@ interface NotificationDropdownProps {
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
   onClearAll: () => void;
-  onAddTestNotification?: (type: Notification['type']) => void;
 }
 
 export function NotificationDropdown({
@@ -30,7 +29,6 @@ export function NotificationDropdown({
   onMarkAsRead,
   onMarkAllAsRead,
   onClearAll,
-  onAddTestNotification,
 }: NotificationDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -126,28 +124,6 @@ export function NotificationDropdown({
               </div>
             ))}
           </ScrollArea>
-        )}
-
-        {onAddTestNotification && (
-          <>
-            <DropdownMenuSeparator />
-            <div className="p-4">
-              <p className="text-sm font-medium mb-2">Test Notifications:</p>
-              <div className="flex gap-2 flex-wrap">
-                {(['shift', 'incident', 'note', 'report'] as const).map((type) => (
-                  <Button
-                    key={type}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onAddTestNotification(type)}
-                    className="text-xs"
-                  >
-                    Add {type}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

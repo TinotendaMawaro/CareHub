@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ interface CaregiverTableProps {
   caregivers: Caregiver[];
   clients?: Client[];
   onEdit: (caregiver: Caregiver) => void;
+  onViewProfile: (caregiver: Caregiver) => void;
   onDelete: (caregiverId: string) => void;
   onAssignToClient?: (caregiverId: string, clientId: string) => void;
 }
@@ -46,6 +48,7 @@ export default function CaregiverTable({
   caregivers,
   clients,
   onEdit,
+  onViewProfile,
   onDelete,
   onAssignToClient
 }: CaregiverTableProps) {
@@ -92,6 +95,7 @@ export default function CaregiverTable({
             <TableHead>Experience</TableHead>
             <TableHead className="hidden md:table-cell">Qualifications</TableHead>
             <TableHead>Availability</TableHead>
+            <TableHead>Profile</TableHead>
             <TableHead>
               <span className="sr-only">Actions</span>
             </TableHead>
@@ -121,6 +125,11 @@ export default function CaregiverTable({
               </TableCell>
               <TableCell>{getAvailabilityBadge(caregiver.availability)}</TableCell>
               <TableCell>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/dashboard/caregivers/${caregiver.id}`}>Profile</Link>
+                </Button>
+              </TableCell>
+              <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button aria-haspopup="true" size="icon" variant="ghost">
@@ -130,6 +139,9 @@ export default function CaregiverTable({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => onViewProfile(caregiver)}>
+                      View Profile
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(caregiver)}>
                       Edit Caregiver
                     </DropdownMenuItem>

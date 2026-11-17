@@ -21,8 +21,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
+import { useCaregivers } from "@/hooks/use-caregivers";
 import { toast } from "@/hooks/use-toast";
-import type { Client, IncidentReport } from "@/lib/types";
+import type { Client, IncidentReport, Caregiver } from "@/lib/types";
 
 interface IncidentFormProps {
   clients: Client[];
@@ -31,9 +32,12 @@ interface IncidentFormProps {
 
 export default function IncidentForm({ clients, onSubmit }: IncidentFormProps) {
   const { user } = useAuth();
+  const { caregivers } = useCaregivers();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     clientId: '',
+    caregiverId: '',
+    incidentType: '',
     severity: '',
     date: '',
     time: '',
@@ -44,15 +48,26 @@ export default function IncidentForm({ clients, onSubmit }: IncidentFormProps) {
     e.preventDefault();
     if (!user) return;
 
+    // Validation
+    if (!formData.caregiverId || !formData.date || !formData.time || !formData.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await onSubmit({
-        clientId: formData.clientId,
-        caregiverId: user.uid, // Assuming current user is the caregiver reporting
+        clientId: formData.clientId || undefined,
+        caregiverId: formData.caregiverId,
         date: formData.date,
         time: formData.time,
         description: formData.description,
-        severity: formData.severity as 'Low' | 'Medium' | 'High',
+        incidentType: formData.incidentType || 'Other',
+        severity: (formData.severity as 'Low' | 'Medium' | 'High') || 'Low',
         status: 'Unresolved',
       });
 
@@ -64,6 +79,8 @@ export default function IncidentForm({ clients, onSubmit }: IncidentFormProps) {
       // Reset form
       setFormData({
         clientId: '',
+        caregiverId: '',
+        incidentType: '',
         severity: '',
         date: '',
         time: '',
@@ -106,6 +123,37 @@ export default function IncidentForm({ clients, onSubmit }: IncidentFormProps) {
                       {client.fullName}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="caregiver">Caregiver *</Label>
+              <Select value={formData.caregiverId} onValueChange={(value) => handleChange('caregiverId', value)} required>
+                <SelectTrigger id="caregiver">
+                  <SelectValue placeholder="Select a caregiver" />
+                </SelectTrigger>
+                <SelectContent>
+                  {caregivers.map((caregiver) => (
+                    <SelectItem key={caregiver.id} value={caregiver.id}>
+                      {caregiver.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="incidentType">Incident Type</Label>
+              <Select value={formData.incidentType} onValueChange={(value) => handleChange('incidentType', value)}>
+                <SelectTrigger id="incidentType">
+                  <SelectValue placeholder="Select incident type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Medical">Medical</SelectItem>
+                  <SelectItem value="Behavioral">Behavioral</SelectItem>
+                  <SelectItem value="Safety">Safety</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>

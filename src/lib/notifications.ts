@@ -1,191 +1,77 @@
-import { getMessaging, getToken } from 'firebase/messaging';
-import { messaging } from './firebase/client';
-import { getFirestore, collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
-import { app } from './firebase/client';
-import type { Notification, Shift, IncidentReport } from './types';
+import { supabase } from './supabase/client';
+import { subscribeToTable } from './supabase/realtime';
+import { mapNotification } from './supabase/mappers';
+import type { Notification } from './types';
 
-const db = getFirestore(app);
+/** VAPID public key, for Web Push when configured in Supabase. */
+const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '';
 
-// VAPID key from Firebase console
-const VAPID_KEY = 'BF2Bw1LNL00JeWuJw1PgWP2B0TgPbdeCAOb0TevwfJStWLxYNAPLMpbA2heDS3vvY7hBewCaoPh6H_VT0Meb2F4';
-
-// Request notification permission and get token
-export const requestNotificationPermission = async (): Promise<string | null> => {
+export const requestNotificationPermission = async (): Promise<boolean> => {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
   try {
-    // Check if messaging is available (client-side only)
-    if (!messaging) {
-      console.warn('Firebase messaging is not available (likely server-side)');
-      return null;
-    }
-
     const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-      return token;
-    }
-    return null;
+    return permission === 'granted';
   } catch (error) {
     console.error('Error requesting notification permission:', error);
-    return null;
+    return false;
   }
 };
 
-// Send notification to admin (server-side function would handle this)
-export const sendNotification = async (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
-  // This would typically be called from a server-side function
-  // For now, we'll store it locally and show it in the UI
-  const newNotification: Notification = {
-    ...notification,
-    id: Date.now().toString(),
-    timestamp: new Date(),
-    read: false,
-  };
-
-  // Store in localStorage for demo purposes
-  const existing = JSON.parse(localStorage.getItem('notifications') || '[]');
-  existing.unshift(newNotification);
-  localStorage.setItem('notifications', JSON.stringify(existing));
-
-  // Trigger notification if permission granted
-  if (Notification.permission === 'granted') {
-    new Notification(notification.title, {
-      body: notification.message,
-      icon: '/favicon.ico',
-    });
-  }
-
-  return newNotification;
-};
-
-// Listen for shift status changes
-export const listenForShiftChanges = (callback: (notification: Notification) => void) => {
-  const shiftsRef = collection(db, 'shifts');
-  const q = query(shiftsRef, orderBy('date', 'desc'));
-
-  return onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'modified') {
-        const shift = { id: change.doc.id, ...change.doc.data() } as Shift;
-        const oldShift = change.oldIndex !== -1 ? snapshot.docs[change.oldIndex]?.data() as Shift : null;
-
-        if (oldShift && oldShift.status !== shift.status) {
-          let title = '';
-          let message = '';
-
-          switch (shift.status) {
-            case 'In Progress':
-              title = 'Shift Started';
-              message = `Caregiver has started their shift with ${shift.clientId}`;
-              break;
-            case 'Completed':
-              title = 'Shift Completed';
-              message = `Caregiver has completed their shift with ${shift.clientId}`;
-              break;
-            case 'Cancelled':
-              title = 'Shift Cancelled';
-              message = `Shift with ${shift.clientId} has been cancelled`;
-              break;
-          }
-
-          if (title && message) {
-            sendNotification({
-              title,
-              message,
-              type: 'shift',
-              data: shift,
-            }).then(callback);
-          }
-        }
-      }
-    });
-  });
-};
-
-// Listen for new incident reports
-export const listenForIncidents = (callback: (notification: Notification) => void) => {
-  const incidentsRef = collection(db, 'incidents');
-  const q = query(incidentsRef, orderBy('date', 'desc'));
-
-  return onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added') {
-        const incident = { id: change.doc.id, ...change.doc.data() } as IncidentReport;
-
-        sendNotification({
-          title: 'New Incident Report',
-          message: `A ${incident.severity} severity incident has been reported`,
-          type: 'incident',
-          data: incident,
-        }).then(callback);
-      }
-    });
-  });
-};
-
-// Listen for shift notes updates
-export const listenForShiftNotes = (callback: (notification: Notification) => void) => {
-  const notesRef = collection(db, 'shiftNotes');
-  const q = query(notesRef, orderBy('timestamp', 'desc'));
-
-  return onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added') {
-        const note = { id: change.doc.id, ...change.doc.data() };
-
-        sendNotification({
-          title: 'New Shift Note',
-          message: `A new shift note has been added`,
-          type: 'note',
-          data: note,
-        }).then(callback);
-      }
-    });
-  });
-};
-
-// Listen for reports updates
-export const listenForReports = (callback: (notification: Notification) => void) => {
-  const reportsRef = collection(db, 'reports');
-  const q = query(reportsRef, orderBy('generatedAt', 'desc'));
-
-  return onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added') {
-        const report = { id: change.doc.id, ...change.doc.data() };
-
-        sendNotification({
-          title: 'New Report Generated',
-          message: `A new report is available`,
-          type: 'report',
-          data: report,
-        }).then(callback);
-      }
-    });
-  });
-};
-
-// Get stored notifications
-export const getStoredNotifications = (): Notification[] => {
-  const stored = localStorage.getItem('notifications');
-  if (stored) {
-    return JSON.parse(stored).map((n: any) => ({
-      ...n,
-      timestamp: new Date(n.timestamp),
-    }));
-  }
-  return [];
-};
-
-// Mark notification as read
-export const markAsRead = (notificationId: string) => {
-  const notifications = getStoredNotifications();
-  const updated = notifications.map(n =>
-    n.id === notificationId ? { ...n, read: true } : n
+/**
+ * FCM push is replaced by Supabase Realtime: notifications are rows in
+ * public.notifications, and this subscribes to inserts for the current user.
+ *
+ * The filter keeps each admin's channel to their own rows. The topic name is
+ * unique per subscription, see subscribeToTable for why.
+ */
+export const listenForNotifications = (
+  userId: string,
+  callback: (notification: Notification) => void
+): (() => void) =>
+  subscribeToTable(
+    'notifications',
+    (payload) => {
+      if (payload?.new?.user_id && payload.new.user_id !== userId) return;
+      callback(mapNotification(payload.new));
+    },
+    { event: 'INSERT', filter: `user_id=eq.${userId}` }
   );
-  localStorage.setItem('notifications', JSON.stringify(updated));
+
+export const fetchNotifications = async (userId: string): Promise<Notification[]> => {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('timestamp', { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return (data ?? []).map(mapNotification);
 };
 
-// Clear all notifications
-export const clearNotifications = () => {
-  localStorage.removeItem('notifications');
+export const markAsRead = async (id: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('id', id);
+  if (error) throw error;
 };
+
+export const markAllAsRead = async (userId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) throw error;
+};
+
+export const clearNotifications = async (userId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', userId);
+  if (error) throw error;
+};
+
+export { VAPID_KEY };

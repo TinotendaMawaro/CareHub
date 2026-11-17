@@ -1,7 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
+# Unanchored so nested installs (functions/node_modules) are ignored too;
+# /node_modules only matches the repo root.
 /node_modules
+**/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -43,3 +46,13 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
+
+# mobile
+mobile/node_modules
+mobile/.expo
+mobile/dist
+mobile/.env
+.smoke-shots/

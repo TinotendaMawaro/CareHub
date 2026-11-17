@@ -20,17 +20,8 @@ interface IncidentListProps {
 export default function IncidentList({ incidents, onStatusChange }: IncidentListProps) {
   const { clients } = useClients();
   const { caregivers } = useCaregivers();
-  const getSeverityBadge = (severity: IncidentReport["severity"]) => {
-    switch (severity) {
-      case "Low":
-        return <Badge variant="secondary">{severity}</Badge>;
-      case "Medium":
-        return <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">{severity}</Badge>;
-      case "High":
-        return <Badge variant="destructive">{severity}</Badge>;
-      default:
-        return <Badge variant="outline">{severity}</Badge>;
-    }
+  const getIncidentTypeBadge = (incidentType: string) => {
+    return <Badge variant="secondary">{incidentType}</Badge>;
   };
 
   const getStatusBadge = (status: IncidentReport["status"]) => {
@@ -39,6 +30,8 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
         return <Badge variant="default" className="bg-green-500 hover:bg-green-600">{status}</Badge>;
       case "Unresolved":
         return <Badge variant="destructive">{status}</Badge>;
+      case "Investigation":
+        return <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">{status}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -48,7 +41,8 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
     await onStatusChange(incidentId, newStatus);
   };
 
-  const getClientName = (clientId: string) => {
+  const getClientName = (clientId?: string) => {
+    if (!clientId) return 'Unknown Client';
     const client = clients.find(c => c.id === clientId);
     return client?.fullName || 'Unknown Client';
   };
@@ -74,7 +68,7 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                {getSeverityBadge(incident.severity)}
+                {getIncidentTypeBadge(incident.incidentType)}
                 {getStatusBadge(incident.status)}
               </div>
             </div>
@@ -93,8 +87,10 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Reported">Reported</SelectItem>
                   <SelectItem value="Resolved">Resolved</SelectItem>
                   <SelectItem value="Unresolved">Unresolved</SelectItem>
+                  <SelectItem value="Investigation">Investigation</SelectItem>
                 </SelectContent>
               </Select>
             </div>

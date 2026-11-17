@@ -32,21 +32,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import type { Client } from "@/lib/types";
-import { caregivers } from "@/lib/data";
-import { storage } from "@/lib/firebase/client";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useCaregivers } from "@/hooks/use-caregivers";
+import { supabase } from "@/lib/supabase/client";
 import { Camera, Upload } from "lucide-react";
 
 const clientSchema = z.object({
-  fullName: z.string().min(1, "Full name is required"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
-  address: z.string().min(1, "Address is required"),
   email: z.string().email("Invalid email address"),
-  phone: z.string().min(1, "Phone number is required"),
   emergencyContact: z.string().min(1, "Emergency contact is required"),
   diagnosis: z.string().min(1, "Diagnosis is required"),
-  notes: z.string().optional(),
-  assignedCaregiver: z.string().optional(),
+  notes: z.string().min(1, "Notes are required"),
+  allergies: z.string().optional(),
+  carePlan: z.string().min(1, "Care plan is required"),
+  address: z.string().min(1, "Address is required"),
+  assignedCaregivers: z.string().optional(),
+  preferredCaregivers: z.string().optional(),
+  status: z.string().min(1, "Status is required"),
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
@@ -69,47 +72,60 @@ export default function ClientModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const { caregivers } = useCaregivers();
 
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
-      fullName: "",
+      firstName: "",
+      lastName: "",
       dateOfBirth: "",
-      address: "",
       email: "",
-      phone: "",
       emergencyContact: "",
       diagnosis: "",
       notes: "",
-      assignedCaregiver: "",
+      allergies: "",
+      carePlan: "",
+      address: "",
+      assignedCaregivers: "",
+      preferredCaregivers: "",
+      status: "active",
     },
   });
 
   useEffect(() => {
     if (client) {
       form.reset({
-        fullName: client.fullName,
+        firstName: client.firstName,
+        lastName: client.lastName,
         dateOfBirth: client.dateOfBirth,
-        address: client.address,
         email: client.email,
-        phone: client.phone,
         emergencyContact: client.emergencyContact,
         diagnosis: client.diagnosis,
-        notes: client.notes || "",
-        assignedCaregiver: client.assignedCaregiver,
+        notes: client.notes,
+        allergies: client.allergies ? client.allergies.join(', ') : '',
+        carePlan: client.carePlan,
+        address: client.address,
+        assignedCaregivers: client.assignedCaregivers ? client.assignedCaregivers.join(', ') : '',
+        preferredCaregivers: client.preferredCaregivers ? client.preferredCaregivers.join(', ') : '',
+        status: client.status,
       });
-      setAvatarPreview(client.avatarUrl);
+      setAvatarPreview(client.profilePictureUrl);
     } else {
       form.reset({
-        fullName: "",
+        firstName: "",
+        lastName: "",
         dateOfBirth: "",
-        address: "",
         email: "",
-        phone: "",
         emergencyContact: "",
         diagnosis: "",
         notes: "",
-        assignedCaregiver: "",
+        allergies: "",
+        carePlan: "",
+        address: "",
+        assignedCaregivers: "",
+        preferredCaregivers: "",
+        status: "active",
       });
       setAvatarPreview("");
     }
@@ -129,13 +145,17 @@ export default function ClientModal({
   };
 
   const uploadAvatar = async (): Promise<string | undefined> => {
-    if (!avatarFile) return client?.avatarUrl;
+    if (!avatarFile) return client?.profilePictureUrl;
 
     try {
-      const storageRef = ref(storage, `clients/${Date.now()}_${avatarFile.name}`);
-      const snapshot = await uploadBytes(storageRef, avatarFile);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      return downloadURL;
+      const path = `clients/${Date.now()}_${avatarFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, avatarFile, { cacheControl: "3600", upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      return data.publicUrl;
     } catch (error) {
       console.error("Error uploading avatar:", error);
       throw new Error("Failed to upload profile picture");
@@ -178,7 +198,7 @@ export default function ClientModal({
             {/* Profile Picture Upload */}
             <div className="flex flex-col items-center space-y-4">
               <Avatar className="h-24 w-24">
-                <AvatarImage src={avatarPreview} alt="Profile picture" />
+                <AvatarImage src={avatarPreview || undefined} alt="Profile picture" />
                 <AvatarFallback>
                   <Camera className="h-8 w-8" />
                 </AvatarFallback>
@@ -205,18 +225,34 @@ export default function ClientModal({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="fullName"
+                name="firstName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>First Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="John Doe" {...field} />
+                      <Input placeholder="John" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Last Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Doe" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="dateOfBirth"
@@ -230,21 +266,30 @@ export default function ClientModal({
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            <FormField
-              control={form.control}
-              name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
-                  <FormControl>
-                    <Input placeholder="123 Main St, City, State" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -263,12 +308,12 @@ export default function ClientModal({
 
               <FormField
                 control={form.control}
-                name="phone"
+                name="emergencyContact"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone</FormLabel>
+                    <FormLabel>Emergency Contact</FormLabel>
                     <FormControl>
-                      <Input placeholder="(555) 123-4567" {...field} />
+                      <Input placeholder="+1234567890" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -276,19 +321,6 @@ export default function ClientModal({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="emergencyContact"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Emergency Contact</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Jane Doe - (555) 987-6543" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}
@@ -306,24 +338,13 @@ export default function ClientModal({
 
             <FormField
               control={form.control}
-              name="assignedCaregiver"
+              name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Assigned Caregiver</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a caregiver" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {caregivers.map((caregiver) => (
-                        <SelectItem key={caregiver.id} value={caregiver.name}>
-                          {caregiver.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Address</FormLabel>
+                  <FormControl>
+                    <Input placeholder="123 Main St, City, Country" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -341,6 +362,58 @@ export default function ClientModal({
                       className="resize-none"
                       {...field}
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="carePlan"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Care Plan</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Care plan details" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="assignedCaregivers"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Assigned Caregivers</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Assigned caregivers" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="allergies"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Allergies</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Comma separated, e.g. flowers, nuts" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="preferredCaregivers"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Preferred Caregivers</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Comma separated caregiver IDs" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
