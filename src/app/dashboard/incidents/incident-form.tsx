@@ -127,10 +127,10 @@ export default function IncidentForm({ clients, onSubmit }: IncidentFormProps) {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="caregiver">Caregiver *</Label>
+              <Label htmlFor="caregiver">Staff *</Label>
               <Select value={formData.caregiverId} onValueChange={(value) => handleChange('caregiverId', value)} required>
                 <SelectTrigger id="caregiver">
-                  <SelectValue placeholder="Select a caregiver" />
+                  <SelectValue placeholder="Select a staff member" />
                 </SelectTrigger>
                 <SelectContent>
                   {caregivers.map((caregiver) => (

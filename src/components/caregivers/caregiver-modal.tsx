@@ -164,7 +164,7 @@ export default function CaregiverModal({
       setProfilePictureFile(null);
       setProfilePicturePreview("");
     } catch (error) {
-      console.error("Error submitting caregiver:", error);
+      console.error("Error submitting staff member:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -195,7 +195,7 @@ export default function CaregiverModal({
               </Avatar>
               <div>
                 <h2 className="text-xl font-semibold">{caregiver.name}</h2>
-                <p className="text-sm text-muted-foreground">Caregiver Profile</p>
+                <p className="text-sm text-muted-foreground">Staff Profile</p>
               </div>
             </DialogTitle>
           </DialogHeader>
@@ -290,12 +290,12 @@ export default function CaregiverModal({
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto mx-4">
         <DialogHeader>
           <DialogTitle>
-            {caregiver ? "Edit Caregiver" : "Add New Caregiver"}
+            {caregiver ? "Edit Staff" : "Add New Staff"}
           </DialogTitle>
           <DialogDescription>
             {caregiver
-              ? "Update the caregiver information below."
-              : "Fill in the details to add a new caregiver to the system."
+              ? "Update the staff member information below."
+              : "Fill in the details to add a new staff member to the system."
             }
           </DialogDescription>
         </DialogHeader>
@@ -450,7 +450,7 @@ export default function CaregiverModal({
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || loading} className="w-full sm:w-auto">
-                {isSubmitting ? "Saving..." : caregiver ? "Update Caregiver" : "Add Caregiver"}
+                {isSubmitting ? "Saving..." : caregiver ? "Update Staff" : "Add Staff"}
               </Button>
             </DialogFooter>
           </form>

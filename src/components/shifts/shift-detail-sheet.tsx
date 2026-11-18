@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Scissors, UserMinus, UserPlus, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Clock3, Scissors, Sparkles, UserMinus, UserPlus, X } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +18,8 @@ import { supabase } from "@/lib/supabase/client";
 import { subscribeToTable } from "@/lib/supabase/realtime";
 import { formatTime, formatWhen, isoToZonedInput, money, zonedToIso } from "@/lib/format";
 import { parseRpcError, shiftRpc, type Scope } from "@/lib/shift-rpc";
+import { findWorkerSuggestions, type WorkerSuggestion } from "@/lib/shiftApi";
+import { initials } from "@/lib/avatar";
 
 const selectCls =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -43,6 +46,11 @@ export default function ShiftDetailSheet({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelPay, setCancelPay] = useState(false);
   const [edit, setEdit] = useState<Record<string, { in: string; out: string; brk: string }>>({});
+  const [when, setWhen] = useState({ date: "", start: "", end: "" });
+  const formKeys = useRef<{ when?: string; edit?: string }>({});
+  // Opening or closing the sheet discards unsaved edits. Declared before the loading effect so it runs first.
+  useEffect(() => { formKeys.current = {}; }, [shiftId]);
+  const [suggested, setSuggested] = useState<WorkerSuggestion[] | null>(null);
 
   const tz = org.timezone;
 
@@ -64,7 +72,25 @@ export default function ShiftDetailSheet({
       for (const w of s.data.shift_workers ?? []) {
         next[w.caregiver_id] = { in: isoToZonedInput(w.clock_in_time, tz), out: isoToZonedInput(w.clock_out_time, tz), brk: String(w.break_minutes ?? 0) };
       }
-      setEdit(next);
+      // Reset the editable fields only when the saved values change, so a background reload
+      // (after assigning staff, a new note arriving) never overwrites what someone is typing.
+      const editKey = `${s.data.id}|${JSON.stringify(next)}`;
+      if (formKeys.current.edit !== editKey) {
+        formKeys.current.edit = editKey;
+        setEdit(next);
+      }
+      const whenKey = `${s.data.id}|${s.data.start_time}|${s.data.end_time}`;
+      if (formKeys.current.when !== whenKey) {
+        formKeys.current.when = whenKey;
+        const st = isoToZonedInput(s.data.start_time, tz);
+        const en = isoToZonedInput(s.data.end_time, tz);
+        setWhen({ date: st.slice(0, 10), start: st.slice(11, 16), end: en.slice(11, 16) });
+      }
+      if (!s.data.approved_at && !s.data.deleted && s.data.status !== "Cancelled") {
+        findWorkerSuggestions({ id: s.data.id }, [], 5).then(setSuggested).catch(() => setSuggested([]));
+      } else {
+        setSuggested([]);
+      }
     }
   }, [shiftId, tz, toast]);
 
@@ -133,35 +159,72 @@ export default function ShiftDetailSheet({
             {shift.pricing_warning && <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">Pricing: {shift.pricing_warning}</p>}
             {shift.reject_reason && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">Sent back: {shift.reject_reason}</p>}
 
+            {editable && (
+              <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Clock3 className="h-4 w-4" />Date and time</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-3 sm:col-span-1">
+                    <Label className="text-xs" htmlFor="sh-date">Date</Label>
+                    <Input id="sh-date" type="date" value={when.date} disabled={inSeries && scope !== "this"} onChange={(e) => setWhen({ ...when, date: e.target.value })} />
+                  </div>
+                  <div><Label className="text-xs" htmlFor="sh-start">Start</Label><Input id="sh-start" type="time" value={when.start} onChange={(e) => setWhen({ ...when, start: e.target.value })} /></div>
+                  <div><Label className="text-xs" htmlFor="sh-end">End</Label><Input id="sh-end" type="time" value={when.end} onChange={(e) => setWhen({ ...when, end: e.target.value })} /></div>
+                </div>
+                {when.end && when.start && when.end <= when.start && (
+                  <p className="text-xs text-muted-foreground">Ends the next day (overnight).</p>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {inSeries && (
+                    <select aria-label="Apply time change to" className={`${selectCls} w-auto`} value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
+                      <option value="this">This shift only</option>
+                      <option value="following">This and following</option>
+                      <option value="all">The whole series</option>
+                    </select>
+                  )}
+                  <Button
+                    size="sm"
+                    disabled={busy || !when.start || !when.end || !when.date}
+                    onClick={() => run("Shift time updated", async () => {
+                      const sameDay = isoToZonedInput(shift.start_time, tz).slice(0, 10) === when.date;
+                      const r = await shiftRpc.reschedule(shift.id, when.start, when.end, scope, scope === "this" && !sameDay ? when.date : null);
+                      if (r.skipped.length) toast({ title: `${r.skipped.length} shift(s) were not changed`, description: "They had started, been approved, or would double-book someone." });
+                    })}
+                  >
+                    Save time
+                  </Button>
+                </div>
+              </section>
+            )}
+
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Participants</h3>
+              <h3 className="text-sm font-semibold">Clients</h3>
               {(shift.shift_clients ?? []).map((c: any) => (
                 <div key={c.client_id} className="flex items-center justify-between text-sm">
                   <span>{c.clients?.first_name} {c.clients?.last_name}</span>
                   {editable && clientIds.length > 1 && (
-                    <Button size="icon" variant="ghost" disabled={busy} onClick={() => run("Participant removed", () => shiftRpc.removeClient(shift.id, c.client_id))}><UserMinus className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" aria-label="Remove client" disabled={busy} onClick={() => run("Client removed", () => shiftRpc.removeClient(shift.id, c.client_id))}><UserMinus className="h-4 w-4" /></Button>
                   )}
                 </div>
               ))}
               {editable && (
                 <div className="flex gap-2">
                   <select className={selectCls} value={addClient} onChange={(e) => setAddClient(e.target.value)}>
-                    <option value="">Add a participant</option>
+                    <option value="">Add a client</option>
                     {clients.filter((c) => !clientIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
                   </select>
-                  <Button size="sm" disabled={!addClient || busy} onClick={() => run("Participant added", async () => { await shiftRpc.addClient(shift.id, addClient, scope); setAddClient(""); })}><UserPlus className="h-4 w-4" /></Button>
+                  <Button size="sm" disabled={!addClient || busy} onClick={() => run("Client added", async () => { await shiftRpc.addClient(shift.id, addClient, scope); setAddClient(""); })}><UserPlus className="h-4 w-4" /></Button>
                 </div>
               )}
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Support workers ({workerIds.length} of {shift.required_workers})</h3>
+              <h3 className="text-sm font-semibold">Staff ({workerIds.length} of {shift.required_workers})</h3>
               {(shift.shift_workers ?? []).map((w: any) => (
                 <div key={w.caregiver_id} className="space-y-2 rounded-md border p-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{w.caregivers?.name} <span className="text-xs text-muted-foreground">{w.role}</span></span>
                     {editable && !w.clock_in_time && (
-                      <Button size="icon" variant="ghost" disabled={busy} onClick={() => run("Worker removed", () => shiftRpc.removeWorker(shift.id, w.caregiver_id, scope))}><UserMinus className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" aria-label={`Unassign ${w.caregivers?.name ?? "staff"}`} disabled={busy} onClick={() => run("Staff unassigned", () => shiftRpc.removeWorker(shift.id, w.caregiver_id, scope))}><UserMinus className="h-4 w-4" /></Button>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -183,13 +246,39 @@ export default function ShiftDetailSheet({
                   )}
                 </div>
               ))}
+              {editable && suggested && suggested.length > 0 && (
+                <div className="space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-primary"><Sparkles className="h-3.5 w-3.5" />Suggested staff</p>
+                  {suggested.map((sg) => (
+                    <div key={sg.caregiverId} className="flex items-center gap-2 rounded-lg bg-card p-2 shadow-sm">
+                      <Avatar className="h-8 w-8">
+                        {sg.avatarUrl && <AvatarImage src={sg.avatarUrl} alt="" className="object-cover" />}
+                        <AvatarFallback className="text-xs">{initials(sg.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                          {sg.name}
+                          {sg.onTeam && <Badge className="h-5 bg-emerald-100 px-1.5 text-[10px] text-emerald-800 hover:bg-emerald-100">Team</Badge>}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{sg.reasons.join(" · ")}</p>
+                      </div>
+                      <Button
+                        size="sm" variant="outline" className="h-8 shrink-0" disabled={busy}
+                        onClick={() => run(`${sg.name} assigned`, () => shiftRpc.addWorker(shift.id, sg.caregiverId, scope))}
+                      >
+                        <UserPlus className="mr-1 h-3.5 w-3.5" />Assign
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {editable && (
                 <div className="flex gap-2">
-                  <select className={selectCls} value={addWorker} onChange={(e) => setAddWorker(e.target.value)}>
-                    <option value="">Add a support worker</option>
+                  <select aria-label="Assign staff" className={selectCls} value={addWorker} onChange={(e) => setAddWorker(e.target.value)}>
+                    <option value="">Assign someone else</option>
                     {caregivers.filter((c) => !workerIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <Button size="sm" disabled={!addWorker || busy} onClick={() => run("Worker added", async () => { await shiftRpc.addWorker(shift.id, addWorker, scope); setAddWorker(""); })}><UserPlus className="h-4 w-4" /></Button>
+                  <Button size="sm" aria-label="Assign" disabled={!addWorker || busy} onClick={() => run("Staff assigned", async () => { await shiftRpc.addWorker(shift.id, addWorker, scope); setAddWorker(""); })}><UserPlus className="h-4 w-4" /></Button>
                 </div>
               )}
               {editable && inSeries && (
@@ -203,7 +292,7 @@ export default function ShiftDetailSheet({
                 </div>
               )}
               {editable && workerIds.length === 0 && (
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => run("Offered to the team", () => shiftRpc.publish(shift.id))}>Offer to support workers</Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => run("Offered to the team", () => shiftRpc.publish(shift.id))}>Offer to staff</Button>
               )}
             </section>
 
@@ -277,7 +366,7 @@ export default function ShiftDetailSheet({
                     {shift.status === "Completed" && (
                       <Button variant="outline" disabled={busy} onClick={() => {
                         const r = window.prompt("What needs fixing?");
-                        if (r) void run("Sent back to worker", () => shiftRpc.reject(shift.id, r));
+                        if (r) void run("Sent back to staff", () => shiftRpc.reject(shift.id, r));
                       }}><X className="mr-1 h-4 w-4" />Send back</Button>
                     )}
                   </>
@@ -288,7 +377,7 @@ export default function ShiftDetailSheet({
                 <div className="space-y-2 rounded-md border p-3">
                   <Label className="text-xs">Cancel this shift</Label>
                   <Input placeholder="Reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
-                  <label className="flex items-center gap-2 text-sm"><Checkbox checked={cancelPay} onCheckedChange={(v) => setCancelPay(!!v)} />Short-notice cancellation (worker is paid, participant is billed)</label>
+                  <label className="flex items-center gap-2 text-sm"><Checkbox checked={cancelPay} onCheckedChange={(v) => setCancelPay(!!v)} />Short-notice cancellation (staff are paid, the client is billed)</label>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => run("Shift cancelled", () => shiftRpc.cancel([shift.id], cancelReason || null, cancelPay))}>Cancel shift</Button>
                     <Button size="sm" variant="destructive" disabled={busy} onClick={() => window.confirm(inSeries && scope !== "this" ? "Delete these shifts?" : "Delete this shift?") && run("Deleted", async () => { await shiftRpc.remove(shift.id, scope); onClose(); })}>Delete{inSeries && scope !== "this" ? ` (${scope})` : ""}</Button>

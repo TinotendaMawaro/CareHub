@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
  * Uploads a local file (from the image or document picker) to a private bucket under the
  * signed-in user's folder, which is what the storage policies require. Returns the object path.
  */
-export async function uploadLocalFile(bucket: 'onboarding' | 'incident-photos' | 'documents', uri: string, fileName: string, contentType: string): Promise<string> {
+export async function uploadLocalFile(bucket: 'onboarding' | 'incident-photos' | 'documents' | 'avatars', uri: string, fileName: string, contentType: string): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error('Sign in again to upload.');
   const safe = fileName.replace(/[^A-Za-z0-9._-]/g, '_').slice(-80) || 'file';

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import { useSearchParams } from "next/navigation";
 import { Archive, Check, ExternalLink, FileText, FolderOpen, Search, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +32,8 @@ const selectCls = "flex h-10 w-full rounded-lg border border-input bg-card px-3 
 
 const OWNER_TABS: { value: DocOwnerKind | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "caregiver", label: "Support workers" },
-  { value: "client", label: "Participants" },
+  { value: "caregiver", label: "Staff" },
+  { value: "client", label: "Clients" },
   { value: "organisation", label: "Organisation" },
 ];
 
@@ -114,12 +115,13 @@ function DocumentsHub() {
     </button>
   );
 
+  const paged = usePaged(shown, 20, shown.length);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Documents</h1>
-          <p className="text-sm text-muted-foreground">Worker checks and certificates, participant plans and agreements, and your policies, with expiry tracking.</p>
+          <p className="text-sm text-muted-foreground">Worker checks and certificates, client plans and agreements, and your policies, with expiry tracking.</p>
         </div>
         <Button onClick={() => setUploadOpen(true)}><Upload className="mr-1 h-4 w-4" />Upload document</Button>
       </div>
@@ -166,7 +168,7 @@ function DocumentsHub() {
                   <TableRow><TableHead>Document</TableHead><TableHead>Belongs to</TableHead><TableHead>Expiry</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
-                  {shown.map((d) => {
+                  {paged.rows.map((d) => {
                     const s = expiryState(d.expiry_date, today);
                     const kind = ownerKind(d);
                     return (
@@ -183,7 +185,7 @@ function DocumentsHub() {
                         <TableCell>
                           <p className="text-sm">{ownerName(d)}</p>
                           <p className="text-xs text-muted-foreground">
-                            {kind === "caregiver" ? "Support worker" : kind === "client" ? "Participant" : "Organisation"}
+                            {kind === "caregiver" ? "Staff" : kind === "client" ? "Client" : "Organisation"}
                             {kind !== "caregiver" && d.visible_to_staff ? " · shared with workers" : ""}
                           </p>
                         </TableCell>
@@ -223,6 +225,7 @@ function DocumentsHub() {
                   })}
                 </TableBody>
               </Table>
+              <Pager {...paged.pager} />
             </div>
           )}
         </CardContent>
@@ -241,7 +244,7 @@ function RejectDialog({ doc, onClose, onReject }: { doc: DocumentRow | null; onC
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Reject {doc?.title}</DialogTitle>
-          <DialogDescription>The support worker sees this reason in the app and can upload a new copy.</DialogDescription>
+          <DialogDescription>The staff member sees this reason in the app and can upload a new copy.</DialogDescription>
         </DialogHeader>
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="For example: the photo is blurry, or this check has expired" />
         <DialogFooter>
@@ -336,14 +339,14 @@ function UploadDialog({
           <div>
             <Label>Belongs to</Label>
             <select className={selectCls} value={kind} onChange={(e) => changeKind(e.target.value as DocOwnerKind)}>
-              <option value="caregiver">A support worker</option>
-              <option value="client">A participant</option>
+              <option value="caregiver">A staff member</option>
+              <option value="client">A client</option>
               <option value="organisation">The organisation</option>
             </select>
           </div>
           {kind !== "organisation" ? (
             <div>
-              <Label>{kind === "caregiver" ? "Support worker" : "Participant"}</Label>
+              <Label>{kind === "caregiver" ? "Staff" : "Client"}</Label>
               <select className={selectCls} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} aria-label="Owner">
                 <option value="">Choose...</option>
                 {people[kind].map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -374,9 +377,9 @@ function UploadDialog({
             <label className="flex items-start gap-2 text-sm sm:col-span-2">
               <Checkbox checked={visible} onCheckedChange={(v) => setVisible(!!v)} />
               <span>
-                <b>Share with support workers</b><br />
+                <b>Share with staff</b><br />
                 <span className="text-muted-foreground">
-                  {kind === "client" ? "Workers on this participant's team, or rostered with them in the next two weeks, can read it in the app." : "Every support worker can read it in the app."}
+                  {kind === "client" ? "Workers on this client's team, or rostered with them in the next two weeks, can read it in the app." : "Every staff member can read it in the app."}
                 </span>
               </span>
             </label>

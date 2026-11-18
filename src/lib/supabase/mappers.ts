@@ -52,6 +52,7 @@ export function mapClient(r: any): Client {
     firstName,
     lastName,
     fullName: `${firstName ?? ''} ${lastName ?? ''}`.trim(),
+    name: `${firstName ?? ''} ${lastName ?? ''}`.trim(),
     email: str(r.email),
     dateOfBirth: str(r.date_of_birth)?.split('T')[0],
     diagnosis: str(r.diagnosis),
@@ -148,9 +149,24 @@ export function toCaregiverRow(d: Partial<Caregiver>): Record<string, unknown> {
   return row;
 }
 
-export function mapShift(r: any, clients: Client[] = [], caregivers: Caregiver[] = []): Shift {
+/** Names embedded by SHIFT_SELECT (clients / caregivers joins), when the query included them. */
+function embeddedClientName(r: any): string | undefined {
+  const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
+  const n = c ? `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() : '';
+  return n || undefined;
+}
+
+export function shiftNames(r: any, clients: Client[] = [], caregivers: Caregiver[] = []) {
   const client = clients.find((c) => c.id === r.client_id);
   const caregiver = caregivers.find((c) => c.id === r.caregiver_id);
+  const w = Array.isArray(r.caregivers) ? r.caregivers[0] : r.caregivers;
+  return {
+    clientName: client?.fullName || embeddedClientName(r) || 'Unknown client',
+    caregiverName: caregiver?.name || w?.name || (r.caregiver_id ? 'Unknown staff' : 'Unassigned'),
+  };
+}
+
+export function mapShift(r: any, clients: Client[] = [], caregivers: Caregiver[] = []): Shift {
   return {
     id: str(r.id)!,
     shiftId: str(r.id)!,
@@ -193,8 +209,7 @@ export function mapShift(r: any, clients: Client[] = [], caregivers: Caregiver[]
     deleted: !!r.deleted,
     supportFamily: r.support_family ?? undefined,
     isSleepover: !!r.is_sleepover,
-    clientName: client ? client.fullName : 'Unknown Client',
-    caregiverName: caregiver ? caregiver.name : 'Unknown Caregiver',
+    ...shiftNames(r, clients, caregivers),
   };
 }
 

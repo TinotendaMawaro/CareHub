@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CalendarDays, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,9 +15,19 @@ import { parseRpcError, shiftRpc } from "@/lib/shift-rpc";
 import type { Shift } from "@/lib/types";
 
 export default function SchedulingPage() {
+  return (
+    <Suspense fallback={null}>
+      <SchedulingInner />
+    </Suspense>
+  );
+}
+
+function SchedulingInner() {
+  const params = useSearchParams();
+  const router = useRouter();
   const { toast } = useToast();
   const { shifts, loading, caregivers } = useShifts();
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(params.get("new") === "1");
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Move Scheduled -> Late -> No Show as time passes.
@@ -55,8 +66,8 @@ export default function SchedulingPage() {
     <>
       <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="font-headline text-2xl font-bold sm:text-3xl">Shift scheduling</h1>
-          <p className="text-muted-foreground">Create, staff, split and approve shifts for participants and support workers.</p>
+          <h1 className="font-headline text-2xl font-bold sm:text-3xl">Shifts</h1>
+          <p className="text-muted-foreground">Create, staff, split and approve shifts for clients and staff.</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Button variant="outline" asChild>
@@ -80,7 +91,7 @@ export default function SchedulingPage() {
             // Office staff can start or end a shift on a worker's behalf (recorded as a time correction).
             onStart={(s) => s.caregiverId
               ? act("Shift started", () => shiftRpc.adjust(s.id, s.caregiverId!, new Date().toISOString(), null))
-              : toast({ title: "Assign a worker first", variant: "destructive" })}
+              : toast({ title: "Assign staff first", variant: "destructive" })}
             onStop={(s) => s.caregiverId && s.clockInTime
               ? act("Shift ended", () => shiftRpc.adjust(s.id, s.caregiverId!, new Date(s.clockInTime!).toISOString(), new Date().toISOString()))
               : undefined}
@@ -90,8 +101,8 @@ export default function SchedulingPage() {
               const r = await shiftRpc.approveMany(ids);
               if (r.failed.length) throw new Error(`${r.approved} approved, ${r.failed.length} could not be: ${r.failed[0].error}`);
             })}
-            onBulkAssign={(ids, cg) => act("Worker assigned", async () => { for (const id of ids) await shiftRpc.addWorker(id, cg); })}
-            onBulkUnassign={(ids) => act("Workers removed", async () => {
+            onBulkAssign={(ids, cg) => act("Staff assigned", async () => { for (const id of ids) await shiftRpc.addWorker(id, cg); })}
+            onBulkUnassign={(ids) => act("Staff unassigned", async () => {
               for (const id of ids) {
                 const s = shifts.find((x) => x.id === id);
                 for (const w of s?.workerIds ?? (s?.caregiverId ? [s.caregiverId] : [])) await shiftRpc.removeWorker(id, w);
@@ -102,12 +113,12 @@ export default function SchedulingPage() {
               if (!window.confirm(`Delete ${ids.length} shift(s)? Started or approved shifts are kept.`)) return;
               void act("Shifts deleted", async () => { for (const id of ids) await shiftRpc.remove(id); });
             }}
-            onBulkPublish={(ids) => act("Offered to workers", async () => { for (const id of ids) await shiftRpc.publish(id); })}
+            onBulkPublish={(ids) => act("Offered to staff", async () => { for (const id of ids) await shiftRpc.publish(id); })}
           />
         </CardContent>
       </Card>
 
-      <CreateShiftsDialog isOpen={creating} onClose={() => setCreating(false)} />
+      <CreateShiftsDialog isOpen={creating} onClose={() => { setCreating(false); if (params.get("new")) router.replace("/dashboard/scheduling"); }} />
       <ShiftDetailSheet shiftId={openId} onClose={() => setOpenId(null)} />
     </>
   );

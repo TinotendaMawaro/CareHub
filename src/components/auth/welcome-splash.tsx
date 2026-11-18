@@ -18,7 +18,7 @@ const variantConfig = {
     title: (org: string) => `Welcome to ${org}`,
     subtitle: "Preparing your workspace",
     features: [
-      { icon: Heart, label: "Compassionate care", desc: "Participant-first" },
+      { icon: Heart, label: "Compassionate care", desc: "Client-first" },
       { icon: Shield, label: "Compliance ready", desc: "EVV and audit trails" },
       { icon: Users, label: "Team coordination", desc: "Rosters and chat" },
       { icon: Clock, label: "Real-time tracking", desc: "Live shift monitoring" },
@@ -28,7 +28,7 @@ const variantConfig = {
     title: () => "Admin portal",
     subtitle: "Preparing your workspace",
     features: [
-      { icon: Users, label: "Staff management", desc: "Workers and participants" },
+      { icon: Users, label: "Staff management", desc: "Workers and clients" },
       { icon: Shield, label: "Compliance", desc: "EVV and audit trails" },
       { icon: Clock, label: "Payroll and billing", desc: "Automated calculations" },
       { icon: Heart, label: "Quality assurance", desc: "Incidents and care plans" },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,7 @@ export default function ApprovalsPage() {
     }
   }
 
+  const paged = usePaged(rows, 20, rows.length);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -126,7 +128,7 @@ export default function ApprovalsPage() {
               <TableRow>
                 <TableHead className="w-8" />
                 <TableHead>When</TableHead>
-                <TableHead>Participants</TableHead>
+                <TableHead>Clients</TableHead>
                 <TableHead>Workers</TableHead>
                 <TableHead className="text-right">Hours</TableHead>
                 <TableHead>Check</TableHead>
@@ -137,7 +139,7 @@ export default function ApprovalsPage() {
               {!loading && rows.length === 0 && (
                 <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground">Nothing waiting for approval in this range.</TableCell></TableRow>
               )}
-              {rows.map((r) => {
+              {paged.rows.map((r) => {
                 const issue = issueFor(r);
                 const hrs = r.shift_workers.reduce((a, w) => a + Number(w.hours_worked ?? 0), 0);
                 return (
@@ -158,6 +160,7 @@ export default function ApprovalsPage() {
               })}
             </TableBody>
           </Table>
+          <Pager {...paged.pager} />
         </CardContent>
       </Card>
 

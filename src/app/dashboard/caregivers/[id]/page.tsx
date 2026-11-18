@@ -54,7 +54,7 @@ export default function CaregiverProfilePage() {
   }, [timesheets]);
 
   if (!caregiver) {
-    return <div className="p-6">Caregiver not found.</div>;
+    return <div className="p-6">Staff not found.</div>;
   }
 
   return (
@@ -68,7 +68,7 @@ export default function CaregiverProfilePage() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold font-headline">{caregiver.name}</h1>
-            <p className="text-sm text-muted-foreground">Support worker profile</p>
+            <p className="text-sm text-muted-foreground">Staff profile</p>
           </div>
         </div>
         <Badge variant="outline">{caregiver.availability}</Badge>

@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Image, ScrollView, Text, View } from 'react-native';
+import { ProfilePhoto } from '@/components/profile-photo';
 import { TwoFactorCard } from '@/components/two-factor-card';
 import { Banner, Button, Card, Input, Label, Muted, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
@@ -67,10 +68,13 @@ export default function Profile() {
     <Screen>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: TAB_BAR_SPACE, gap: 14 }} keyboardShouldPersistTaps="handled">
         <Card style={{ alignItems: 'center', gap: 8 }}>
-          {org.logoUrl && <Image source={{ uri: org.logoUrl }} style={{ width: 64, height: 64 }} resizeMode="contain" accessibilityLabel={`${org.name} logo`} />}
+          <ProfilePhoto name={me?.name} />
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>{me?.name}</Text>
           <Muted>{session?.user.email}</Muted>
-          <Muted>{org.name}</Muted>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {org.logoUrl && <Image source={{ uri: org.logoUrl }} style={{ width: 18, height: 18 }} resizeMode="contain" accessibilityLabel={`${org.name} logo`} />}
+            <Muted>{org.name}</Muted>
+          </View>
         </Card>
 
         {incomplete && <Banner tone="warn" text={`Onboarding: ${onboarding.approved_steps} of ${onboarding.required_steps} required steps done.`} />}

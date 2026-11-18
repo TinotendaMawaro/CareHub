@@ -91,7 +91,7 @@ export default function ClientProfilePage() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold font-headline">{client.fullName}</h1>
-            <p className="text-sm text-muted-foreground">Participant profile</p>
+            <p className="text-sm text-muted-foreground">Client profile</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -127,7 +127,7 @@ export default function ClientProfilePage() {
         <TabsContent value="overview" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Participant Details</CardTitle>
+              <CardTitle>Client Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div>

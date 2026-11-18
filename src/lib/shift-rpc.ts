@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 /** Database errors are raised as "code: message"; split them so the UI can show the message and branch on the code. */
 export function parseRpcError(e: unknown): { code: string; message: string } {
   const raw = e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as any).message) : String(e);
-  const m = /^([a-z_]+): ([sS]*)$/.exec(raw);
+  const m = /^([a-z_]+): ([\s\S]*)$/.exec(raw);
   return m ? { code: m[1], message: m[2] } : { code: "error", message: raw };
 }
 
@@ -84,5 +84,10 @@ export const shiftRpc = {
   unapprove: (shiftId: string) => call<void>("unapprove_shift", { p_shift: shiftId }),
   adjust: (shiftId: string, caregiverId: string, clockIn: string | null, clockOut: string | null, breakMinutes = 0) =>
     call<void>("adjust_shift_worker", { p_shift: shiftId, p_caregiver: caregiverId, p_in: clockIn, p_out: clockOut, p_break: breakMinutes }),
+  /** New local times ("HH:MM"); an end at or before the start finishes next day. `date` moves a single shift. */
+  reschedule: (shiftId: string, start: string, end: string, scope: Scope = "this", date: string | null = null) =>
+    call<{ updated: number; skipped: { shift_id: string; date: string; reason: string }[] }>("reschedule_shift", {
+      p_shift: shiftId, p_start: start, p_end: end, p_scope: scope, p_date: date,
+    }),
   syncStatuses: () => call<number>("sync_shift_statuses"),
 };

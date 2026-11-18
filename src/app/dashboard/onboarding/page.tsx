@@ -132,7 +132,7 @@ export default function OnboardingPage() {
         <p className="text-sm text-muted-foreground">Checklists for new staff, office users and participants. {waiting > 0 ? `${waiting} step(s) are waiting for your review.` : "Nothing is waiting for review."}</p>
       </div>
       <Tabs defaultValue="staff">
-        <TabsList><TabsTrigger value="staff">Staff</TabsTrigger><TabsTrigger value="clients">Participants</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="staff">Staff</TabsTrigger><TabsTrigger value="clients">Clients</TabsTrigger></TabsList>
 
         <TabsContent value="staff" className="space-y-3">
           {caregivers.filter((c) => c.userId).map((c) => {
@@ -147,7 +147,7 @@ export default function OnboardingPage() {
               </Card>
             );
           })}
-          {caregivers.length === 0 && <p className="text-sm text-muted-foreground">No support workers yet. Add them under Team.</p>}
+          {caregivers.length === 0 && <p className="text-sm text-muted-foreground">No staff yet. Add them under Team.</p>}
         </TabsContent>
 
         <TabsContent value="clients" className="space-y-3">

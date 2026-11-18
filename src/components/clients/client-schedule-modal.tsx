@@ -135,12 +135,12 @@ export default function ClientScheduleModal({
       await updateShift(shiftId, { caregiverId });
       toast({
         title: "Success",
-        description: "Caregiver assigned successfully",
+        description: "Staff assigned successfully",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to assign caregiver",
+        description: "Failed to assign staff member",
         variant: "destructive",
       });
     }
@@ -273,7 +273,7 @@ export default function ClientScheduleModal({
 
                   <div className="flex items-center gap-2 text-sm">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">Caregiver:</span>
+                    <span className="font-medium">Staff:</span>
                     <span>{shift.caregiverName || shift.caregiverId || 'Unassigned'}</span>
                   </div>
 
@@ -294,7 +294,7 @@ export default function ClientScheduleModal({
                     {!shift.caregiverId && (
                       <Select onValueChange={(caregiverId) => handleAssignCaregiver(shift.shiftId, caregiverId)}>
                         <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Assign Caregiver" />
+                          <SelectValue placeholder="Assign Staff" />
                         </SelectTrigger>
                         <SelectContent>
                           {caregivers.map((caregiver) => (

@@ -104,9 +104,9 @@ export default function MyShifts() {
                 </Text>
                 {'open' in section ? <Pill text="Open" tone="brand" /> : statusPill(s, mine)}
               </View>
-              <Text style={{ color: colors.text }}>{clientNames(s) || 'Participant'}</Text>
+              <Text style={{ color: colors.text }}>{clientNames(s) || 'Client'}</Text>
               <Muted>
-                {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} participants` : ''}
+                {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} clients` : ''}
               </Muted>
               {s.reject_reason && <Text style={{ color: colors.danger }}>Office: {s.reject_reason}</Text>}
               {'open' in section ? (

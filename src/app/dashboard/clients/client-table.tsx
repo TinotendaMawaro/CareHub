@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import Link from "next/link";
 import {
   Table,
@@ -31,7 +32,9 @@ interface ClientTableProps {
 }
 
 export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, onViewSchedule }: ClientTableProps) {
+  const paged = usePaged(clients, 20, clients.length);
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
@@ -43,7 +46,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
           <TableHead className="hidden md:table-cell">Email</TableHead>
           <TableHead className="hidden md:table-cell">Emergency Contact</TableHead>
           <TableHead className="hidden lg:table-cell">Diagnosis</TableHead>
-          <TableHead>Assigned Caregivers</TableHead>
+          <TableHead>Assigned Staff</TableHead>
           <TableHead>Profile</TableHead>
           <TableHead>Schedule</TableHead>
           <TableHead>
@@ -59,7 +62,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
             </TableCell>
           </TableRow>
         ) : (
-          clients.map((client) => (
+          paged.rows.map((client) => (
             <TableRow key={client.id}>
               <TableCell className="hidden sm:table-cell">
                 <Avatar className="h-10 w-10">
@@ -134,5 +137,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
         )}
       </TableBody>
     </Table>
+    <Pager {...paged.pager} />
+  </>
   );
 }

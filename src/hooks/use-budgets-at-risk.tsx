@@ -43,7 +43,7 @@ export function useBudgetsAtRisk(clientNames: Record<string, string>) {
         const end = Date.parse(p.end_date);
         const timeElapsed = end > start ? Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100)) : 100;
         const percentUsed = Math.min(100, Number(top.percent_used));
-        out.push({ id: p.client_id, name: clientNames[p.client_id] ?? "Participant", percentUsed, timeElapsed, category: top.name });
+        out.push({ id: p.client_id, name: clientNames[p.client_id] ?? "Client", percentUsed, timeElapsed, category: top.name });
       }
       if (active) {
         setItems(out.filter((x) => x.percentUsed >= x.timeElapsed).sort((a, b) => b.percentUsed - a.percentUsed).slice(0, 5));

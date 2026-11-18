@@ -6,7 +6,14 @@ import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-const DropdownMenu = DropdownMenuPrimitive.Root
+/**
+ * Non-modal by default. Menu items here often open a Dialog or Sheet; a modal menu and a
+ * dialog both lock the page, and when they close in the wrong order Radix leaves
+ * `pointer-events: none` on <body>, freezing every click (including the sidebar).
+ */
+function DropdownMenu({ modal = false, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+  return <DropdownMenuPrimitive.Root modal={modal} {...props} />
+}
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 

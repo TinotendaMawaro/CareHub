@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import { ChevronDown, ChevronRight, Download, FilePlus2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,12 +102,13 @@ export default function InvoicesPage() {
   const totals = useMemo(() => rows.filter((r) => r.status !== "void").reduce((a, r) => a + Number(r.total), 0), [rows]);
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const paged = usePaged(rows, 20, rows.length);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Invoices</h1>
-          <p className="text-sm text-muted-foreground">Built from approved shifts, one invoice per participant. Export to Xero as a CSV import.</p>
+          <p className="text-sm text-muted-foreground">Built from approved shifts, one invoice per client. Export to Xero as a CSV import.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div><Label className="text-xs">From</Label><Input type="date" value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} /></div>
@@ -130,14 +132,14 @@ export default function InvoicesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8" /><TableHead className="w-8" />
-                <TableHead>Number</TableHead><TableHead>Participant</TableHead><TableHead>Period</TableHead>
+                <TableHead>Number</TableHead><TableHead>Client</TableHead><TableHead>Period</TableHead>
                 <TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead><TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>}
               {!loading && rows.length === 0 && <TableRow><TableCell colSpan={9} className="py-10 text-center text-muted-foreground">No invoices yet. Approve shifts, then generate.</TableCell></TableRow>}
-              {rows.map((r) => (
+              {paged.rows.map((r) => (
                 <Fragment key={r.id}>
                   <TableRow>
                     <TableCell>{["approved", "sent", "paid"].includes(r.status) && <Checkbox checked={picked.has(r.id)} onCheckedChange={() => toggle(r.id)} aria-label="Select invoice" />}</TableCell>
@@ -181,6 +183,7 @@ export default function InvoicesPage() {
               ))}
             </TableBody>
           </Table>
+          <Pager {...paged.pager} />
         </CardContent>
       </Card>
     </div>

@@ -145,12 +145,12 @@ const DATE_PRESETS: { label: string; value: DateRangePreset; getRange: () => { f
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "select", label: "", visible: true, width: 40 },
   { key: "flags", label: "Flags", visible: true, width: 60 },
-  { key: "date", label: "Date", visible: true, width: 110 },
+  { key: "date", label: "Date", visible: true, width: 130 },
   { key: "in", label: "In", visible: true, width: 80 },
   { key: "out", label: "Out", visible: true, width: 80 },
   { key: "shiftType", label: "Shift type", visible: true, width: 110 },
-  { key: "participant", label: "Participant", visible: true, width: 160 },
-  { key: "supportWorker", label: "Support worker", visible: true, width: 160 },
+  { key: "participant", label: "Client", visible: true, width: 160 },
+  { key: "supportWorker", label: "Staff", visible: true, width: 170 },
   { key: "supportItem", label: "Support item", visible: true, width: 140 },
   { key: "hours", label: "Hours", visible: true, width: 70 },
   { key: "valueExGst", label: "Value ex GST", visible: true, width: 100 },
@@ -229,6 +229,10 @@ export default function ShiftTable({
 
   const [pageSize, setPageSize] = useState<PageSize>(25);
   const [page, setPage] = useState(0);
+  const [when, setWhen] = useState<"upcoming" | "past" | "all">("upcoming");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [clientQ, setClientQ] = useState("");
+  const [workerQ, setWorkerQ] = useState("");
   const [globalQuery, setGlobalQuery] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
@@ -376,8 +380,23 @@ export default function ShiftTable({
         return true;
       });
     }
-    return result;
-  }, [shifts, globalQuery, dateFrom, dateTo]);
+    if (when !== "all") {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const t0 = todayStart.getTime();
+      result = result.filter((s) => (when === "upcoming" ? new Date(s.endTime).getTime() >= t0 : new Date(s.endTime).getTime() < t0));
+    }
+    if (clientQ.trim()) {
+      const q = clientQ.trim().toLowerCase();
+      result = result.filter((s) => (s.clientName ?? "").toLowerCase().includes(q));
+    }
+    if (workerQ.trim()) {
+      const q = workerQ.trim().toLowerCase();
+      result = result.filter((s) => (s.caregiverName ?? "").toLowerCase().includes(q));
+    }
+    const dir = sortAsc ? 1 : -1;
+    return [...result].sort((a, b) => dir * (new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
+  }, [shifts, globalQuery, dateFrom, dateTo, when, clientQ, workerQ, sortAsc]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
@@ -396,7 +415,7 @@ export default function ShiftTable({
   React.useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [globalQuery, dateFrom, dateTo, pageSize]);
+  }, [globalQuery, dateFrom, dateTo, pageSize, when, clientQ, workerQ, sortAsc]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -599,7 +618,12 @@ export default function ShiftTable({
           </div>
         );
       case "date":
-        return <span className="whitespace-nowrap">{format(new Date(shift.date), "dd/MM/yyyy")}</span>;
+        return (
+          <span className="whitespace-nowrap">
+            <span className="font-medium">{format(parseISO(shift.date), "EEE")}</span>{" "}
+            <span className="text-muted-foreground">{format(parseISO(shift.date), "d MMM yyyy")}</span>
+          </span>
+        );
       case "in":
         return <span className="tabular-nums">{formatTime(shift.startTime)}</span>;
       case "out":
@@ -709,13 +733,13 @@ export default function ShiftTable({
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Unassigned actions</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => openFindWorker(shift)}>
-                    <UserSearch className="mr-2 h-4 w-4" /> Find worker
+                    <UserSearch className="mr-2 h-4 w-4" /> Find staff
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handlePublish(shift.id)} disabled={publishingIds.has(shift.id)}>
                     <Users className="mr-2 h-4 w-4" /> {publishingIds.has(shift.id) ? 'Publishing…' : 'Publish'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSms(shift)} disabled={smsTargetIds.has(shift.id)}>
-                    <Siren className="mr-2 h-4 w-4" /> {smsTargetIds.has(shift.id) ? 'SMS sent' : 'SMS worker'}
+                    <Siren className="mr-2 h-4 w-4" /> {smsTargetIds.has(shift.id) ? 'SMS sent' : 'SMS staff'}
                   </DropdownMenuItem>
                 </>
               )}
@@ -730,6 +754,20 @@ export default function ShiftTable({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5" role="tablist" aria-label="Which shifts">
+          {(["upcoming", "past", "all"] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              role="tab"
+              aria-selected={when === w}
+              onClick={() => { setWhen(w); setSortAsc(w !== "past"); }}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-all ${when === w ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -904,6 +942,15 @@ export default function ShiftTable({
                         onCheckedChange={toggleSelectAll}
                         aria-label="Select all"
                       />
+                    ) : col.key === "date" ? (
+                      <button
+                        type="button"
+                        onClick={() => setSortAsc((v) => !v)}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        aria-label={sortAsc ? "Date, oldest first. Click for newest first" : "Date, newest first. Click for oldest first"}
+                      >
+                        Date <span aria-hidden>{sortAsc ? "↑" : "↓"}</span>
+                      </button>
                     ) : (
                       col.label
                     )}
@@ -949,10 +996,10 @@ export default function ShiftTable({
                       </Select>
                     )}
                     {col.key === "participant" && (
-                      <Input placeholder="Filter participant" className="h-8 text-xs" />
+                      <Input placeholder="Filter client" className="h-8 text-xs" value={clientQ} onChange={(e) => setClientQ(e.target.value)} aria-label="Filter by client" />
                     )}
                     {col.key === "supportWorker" && (
-                      <Input placeholder="Filter worker" className="h-8 text-xs" />
+                      <Input placeholder="Filter staff" className="h-8 text-xs" value={workerQ} onChange={(e) => setWorkerQ(e.target.value)} aria-label="Filter by staff" />
                     )}
                     {col.key === "shiftType" && (
                       <Select
@@ -983,13 +1030,27 @@ export default function ShiftTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                pageData.map((shift) => (
-                  <TableRow key={shift.id} className={statusRowClass(shift.status)}>
-                    {visibleColumns.map((col) => (
-                      <TableCell key={col.key}>{renderCell(shift, col)}</TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                pageData.map((shift, i) => {
+                  const newDay = i === 0 || pageData[i - 1].date !== shift.date;
+                  const dayCount = newDay ? pageData.filter((x) => x.date === shift.date).length : 0;
+                  return (
+                    <React.Fragment key={shift.id}>
+                      {newDay && (
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                          <TableCell colSpan={visibleColumns.length} className="py-2">
+                            <span className="text-sm font-semibold">{format(parseISO(shift.date), "EEEE d MMMM yyyy")}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">{dayCount} shift{dayCount === 1 ? "" : "s"}</span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow className={statusRowClass(shift.status)}>
+                        {visibleColumns.map((col) => (
+                          <TableCell key={col.key}>{renderCell(shift, col)}</TableCell>
+                        ))}
+                      </TableRow>
+                    </React.Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -1161,7 +1222,7 @@ export default function ShiftTable({
             <SheetTitle>Suggested workers</SheetTitle>
             <SheetDescription>
               {findWorkerShift
-                ? `Ranked candidates for ${findWorkerShift.clientName ?? 'this participant'} on ${format(parseISO(findWorkerShift.date), 'dd MMM yyyy')}`
+                ? `Ranked candidates for ${findWorkerShift.clientName ?? 'this client'} on ${format(parseISO(findWorkerShift.date), 'dd MMM yyyy')}`
                 : 'Loading…'}
             </SheetDescription>
           </SheetHeader>

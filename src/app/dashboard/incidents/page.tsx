@@ -31,7 +31,7 @@ export default function IncidentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold font-headline">Incident Reports</h1>
-        <p className="text-muted-foreground">Review and manage incident reports submitted by caregivers.</p>
+        <p className="text-muted-foreground">Review and manage incident reports submitted by staff.</p>
       </div>
       <IncidentForm clients={clients} onSubmit={handleAddIncident} />
       <Card>

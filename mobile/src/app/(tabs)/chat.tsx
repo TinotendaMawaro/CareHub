@@ -101,7 +101,7 @@ export default function ChatList() {
                 <Pressable key={p.id} onPress={() => (picker === 'dm' ? void startDm(p.id) : setChosen(on ? chosen.filter((x) => x !== p.id) : [...chosen, p.id]))}>
                   <Card style={{ flexDirection: 'row', justifyContent: 'space-between', borderColor: on ? colors.text : colors.border }}>
                     <Text style={{ color: colors.text, fontSize: 16 }}>{p.name}</Text>
-                    <Muted>{on ? 'Added' : p.role === 'caregiver' ? 'Support worker' : 'Office'}</Muted>
+                    <Muted>{on ? 'Added' : p.role === 'caregiver' ? 'Staff' : 'Office'}</Muted>
                   </Card>
                 </Pressable>
               );

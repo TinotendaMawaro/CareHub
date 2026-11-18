@@ -6,19 +6,42 @@ import { parseError, rpc, supabase } from '@/lib/supabase';
 
 type Doc = { id: string; kind: string; title: string; version: number; body: string };
 
-/** Minimal Markdown: headings, bold, bullets. The text is the organisation's own terms. */
-function Body({ text }: { text: string }) {
+/** Inline **bold** as nested Text runs. */
+function Inline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
   return (
-    <View style={{ gap: 6 }}>
-      {text.split('\n').map((line, i) => {
+    <>
+      {parts.map((p, i) =>
+        p.startsWith('**') && p.endsWith('**')
+          ? <Text key={i} style={{ fontWeight: '700' }}>{p.slice(2, -2)}</Text>
+          : <Text key={i}>{p.replace(/\*(.*?)\*/g, '$1')}</Text>,
+      )}
+    </>
+  );
+}
+
+/** The organisation's policies: headings, paragraphs, bullet and numbered lists, bold. */
+function Body({ text, org }: { text: string; org: string }) {
+  const lines = text.replace(/\{\{organisation\}\}/g, org).split('\n');
+  return (
+    <View style={{ gap: 8 }}>
+      {lines.map((line, i) => {
         const h = /^(#{1,3})\s+(.*)$/.exec(line);
-        const clean = (h ? h[2] : line).replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
-        if (!clean.trim()) return <View key={i} style={{ height: 4 }} />;
-        return (
-          <Text key={i} style={{ color: colors.text, fontSize: h ? 18 : 15, fontWeight: h ? '700' : '400', lineHeight: 22 }}>
-            {clean}
-          </Text>
-        );
+        const li = /^\s*(?:[-*]|(\d+)\.)\s+(.*)$/.exec(line);
+        if (!line.trim()) return null;
+        if (h) {
+          const level = h[1].length;
+          return <Text key={i} style={{ color: colors.text, fontSize: level === 1 ? 20 : 16, fontWeight: '800', marginTop: level === 1 ? 0 : 6 }}>{h[2]}</Text>;
+        }
+        if (li) {
+          return (
+            <View key={i} style={{ flexDirection: 'row', gap: 8, paddingLeft: 4 }}>
+              <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 22, minWidth: 16 }}>{li[1] ? `${li[1]}.` : '•'}</Text>
+              <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22, flex: 1 }}><Inline text={li[2]} /></Text>
+            </View>
+          );
+        }
+        return <Text key={i} style={{ color: colors.text, fontSize: 15, lineHeight: 22 }}><Inline text={line} /></Text>;
       })}
     </View>
   );
@@ -27,7 +50,7 @@ function Body({ text }: { text: string }) {
 const fetchPending = () => supabase.rpc('pending_legal_documents');
 
 export default function Terms() {
-  const { refreshOnboarding, signOut, me } = useSession();
+  const { refreshOnboarding, signOut, me, org } = useSession();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,7 +91,7 @@ export default function Terms() {
           <>
             <Muted>Document 1 of {docs.length}. Please read it, then type your full name to accept.</Muted>
             <Card>
-              <Body text={doc.body} />
+              <Body text={doc.body} org={org.name} />
             </Card>
             <View>
               <Label>Your full name{me ? ` (${me.name})` : ''}</Label>

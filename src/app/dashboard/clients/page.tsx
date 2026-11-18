@@ -180,7 +180,7 @@ export default function ClientsPage() {
             >
               <option value="name">Sort by Name</option>
               <option value="age">Sort by Age</option>
-              <option value="assignedCaregiver">Sort by Caregiver</option>
+              <option value="assignedCaregiver">Sort by Staff</option>
             </select>
             <Button
               variant="outline"

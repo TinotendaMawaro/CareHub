@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import Link from "next/link";
 import {
   Table,
@@ -82,6 +83,7 @@ export default function CaregiverTable({
   };
 
 
+  const paged = usePaged(caregivers, 20, caregivers.length);
   return (
     <>
       <Table>
@@ -102,7 +104,7 @@ export default function CaregiverTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {caregivers.map((caregiver) => (
+          {paged.rows.map((caregiver) => (
             <TableRow key={caregiver.id}>
               <TableCell className="hidden sm:table-cell">
                 <Avatar className="h-10 w-10">
@@ -143,7 +145,7 @@ export default function CaregiverTable({
                       View Profile
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(caregiver)}>
-                      Edit Caregiver
+                      Edit Staff
                     </DropdownMenuItem>
                     <DropdownMenuItem>View Schedule</DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -151,7 +153,7 @@ export default function CaregiverTable({
                       className="text-destructive"
                       onClick={() => handleDeleteClick(caregiver.id)}
                     >
-                      Delete Caregiver
+                      Delete Staff
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -160,13 +162,14 @@ export default function CaregiverTable({
           ))}
         </TableBody>
       </Table>
+      <Pager {...paged.pager} />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the caregiver
+              This action cannot be undone. This will permanently delete the staff member
               and remove their data from the system.
             </AlertDialogDescription>
           </AlertDialogHeader>

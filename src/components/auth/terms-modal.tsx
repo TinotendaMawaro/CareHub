@@ -81,7 +81,7 @@ export function TermsModal({ onAccept, onDecline }: TermsModalProps) {
 
               <section>
                 <h3 className="font-semibold text-foreground mb-2">2. Description of Service</h3>
-                <p>CareHub is a healthcare management platform designed for aged care and disability support services. It provides tools for client management, caregiver scheduling, shift tracking, incident reporting, billing, payroll, and compliance monitoring.</p>
+                <p>CareHub is a healthcare management platform designed for aged care and disability support services. It provides tools for client management, staff member scheduling, shift tracking, incident reporting, billing, payroll, and compliance monitoring.</p>
               </section>
 
               <section>

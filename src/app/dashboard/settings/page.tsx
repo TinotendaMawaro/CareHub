@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ImageIcon, ShieldCheck, Upload } from "lucide-react";
 import { TotpEnrollPanel } from "@/components/auth/mfa-gate";
+import { RolesPanel } from "@/components/settings/roles-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,7 +22,22 @@ import type { LegalDocument, Organisation } from "@/lib/types";
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 const TIMEZONES = ["Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Adelaide", "Australia/Perth", "Australia/Darwin", "Australia/Hobart", "Pacific/Auckland"];
 
+const TABS = ["organisation", "scheduling", "invoicing", "payroll", "roles", "security", "terms"] as const;
+
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsInner />
+    </Suspense>
+  );
+}
+
+function SettingsInner() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const requested = params.get("tab");
+  const tab = (TABS as readonly string[]).includes(requested ?? "") ? requested! : "organisation";
   const { isAdmin } = useAuth();
   const { org, save } = useOrganisation();
   const { settings: payroll, updateSettings: savePayroll } = usePayrollSettings();
@@ -77,14 +94,15 @@ export default function SettingsPage() {
         {!ro && <Button disabled={!dirty || saving} onClick={persist}>{saving ? "Saving..." : "Save changes"}</Button>}
       </div>
 
-      <Tabs defaultValue="organisation">
-        <TabsList className="flex-wrap">
+      <Tabs value={tab} onValueChange={(v) => router.replace(`${pathname}?tab=${v}`, { scroll: false })}>
+        <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="organisation">Organisation</TabsTrigger>
           <TabsTrigger value="scheduling">Shifts and location</TabsTrigger>
           <TabsTrigger value="invoicing">Invoicing and Xero</TabsTrigger>
           <TabsTrigger value="payroll">Payroll</TabsTrigger>
+          <TabsTrigger value="roles">Roles & permissions</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="terms">Terms and conditions</TabsTrigger>
+          <TabsTrigger value="terms">Policies & terms</TabsTrigger>
         </TabsList>
 
         <TabsContent value="organisation">
@@ -136,14 +154,14 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               <label className="flex items-start gap-2 text-sm">
                 <Checkbox disabled={ro} checked={draft.defaultGeofenceRequired} onCheckedChange={(v) => set("defaultGeofenceRequired", !!v)} />
-                <span><b>Workers must be at the participant's address to start a shift.</b><br /><span className="text-muted-foreground">Uses the phone's location. Participants need address coordinates saved.</span></span>
+                <span><b>Workers must be at the client's address to start a shift.</b><br /><span className="text-muted-foreground">Uses the phone's location. Clients need address coordinates saved.</span></span>
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><Label>Allowed distance (metres)</Label><Input type="number" min={20} disabled={ro} value={draft.defaultGeofenceRadiusM} onChange={(e) => set("defaultGeofenceRadiusM", Number(e.target.value) || 150)} /></div>
                 <div><Label>Can start this many minutes early</Label><Input type="number" min={0} disabled={ro} value={draft.clockInEarlyMinutes} onChange={(e) => set("clockInEarlyMinutes", Math.max(0, Number(e.target.value) || 0))} /></div>
               </div>
               <label className="flex items-center gap-2 text-sm"><Checkbox disabled={ro} checked={draft.enforceGeofenceOnEnd} onCheckedChange={(v) => set("enforceGeofenceOnEnd", !!v)} />Also check location when ending a shift</label>
-              <label className="flex items-center gap-2 text-sm"><Checkbox disabled={ro} checked={draft.requireNoteOnEnd} onCheckedChange={(v) => set("requireNoteOnEnd", !!v)} />Require a shift note for every participant before a shift can be ended</label>
+              <label className="flex items-center gap-2 text-sm"><Checkbox disabled={ro} checked={draft.requireNoteOnEnd} onCheckedChange={(v) => set("requireNoteOnEnd", !!v)} />Require a shift note for every client before a shift can be ended</label>
             </CardContent>
           </Card>
         </TabsContent>
@@ -176,6 +194,8 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="roles"><RolesPanel /></TabsContent>
+
         <TabsContent value="security">
           <div className="space-y-4">
             <Card>
@@ -188,7 +208,7 @@ export default function SettingsPage() {
                   <Checkbox disabled={ro} checked={draft.requireMfa} onCheckedChange={(v) => set("requireMfa", !!v)} />
                   <span>
                     <b>Require two-factor authentication for all office users.</b><br />
-                    <span className="text-muted-foreground">Admins, managers and office staff without it will be asked to set it up the next time they open the dashboard. Support workers on the mobile app are not affected.</span>
+                    <span className="text-muted-foreground">Admins, managers and office staff without it will be asked to set it up the next time they open the dashboard. Staff on the mobile app are not affected.</span>
                   </span>
                 </label>
                 {!ro && draft.requireMfa !== org.requireMfa && <p className="mt-2 text-xs text-muted-foreground">Press "Save changes" above to apply.</p>}
@@ -289,7 +309,7 @@ function TermsEditor({ canEdit }: { canEdit: boolean }) {
       <CardHeader>
         <CardTitle>Terms and conditions</CardTitle>
         <CardDescription>
-          Staff, office users and participants accept these during onboarding. The starter text is a template only: have your legal adviser review it before you use it with real people.
+          Staff, office users and clients accept these during onboarding. The starter text is a template only: have your legal adviser review it before you use it with real people.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

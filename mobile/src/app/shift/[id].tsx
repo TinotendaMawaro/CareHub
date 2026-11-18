@@ -152,7 +152,7 @@ export default function ShiftScreen() {
           <Button title="Start shift" onPress={start} loading={busy === 'start'} disabled={shift.status === 'Cancelled'} />
         )}
         {!started && !ended && shift.geofence_required !== false && (
-          <Muted>Starting needs your location: you must be at the participant&apos;s address.</Muted>
+          <Muted>Starting needs your location: you must be at the client&apos;s address.</Muted>
         )}
 
         {clients.map((c) => (

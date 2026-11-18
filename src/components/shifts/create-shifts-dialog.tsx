@@ -81,7 +81,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
   const needed = minWorkers(ratio, Math.max(clientIds.length, 1));
   const ratioProblem =
     clientIds.length > ratioCapacity(ratio) * Math.max(workerIds.length, 1)
-      ? `${clientIds.length} participants at ${ratio} need at least ${needed} worker${needed > 1 ? "s" : ""} (or a wider ratio).`
+      ? `${clientIds.length} clients at ${ratio} need at least ${needed} worker${needed > 1 ? "s" : ""} (or a wider ratio).`
       : null;
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
@@ -97,7 +97,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
 
   async function submit() {
     setError(null);
-    if (clientIds.length === 0) return setError("Choose at least one participant.");
+    if (clientIds.length === 0) return setError("Choose at least one client.");
     if (blocks.some((b) => !b.start_time || !b.end_time)) return setError("Every shift needs a start and end time.");
     if (ratioProblem) return setError(ratioProblem);
     if (freq === "weekly" && weekdays.length === 0) return setError("Pick at least one day of the week.");
@@ -136,7 +136,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
         <DialogHeader>
           <DialogTitle>New shifts</DialogTitle>
           <DialogDescription>
-            Create one or many shifts at once: several time blocks a day, repeating, for one or more participants and workers.
+            Create one or many shifts at once: several time blocks a day, repeating, for one or more clients and workers.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +144,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
           <div className="grid gap-4 md:grid-cols-2">
             <section className="space-y-2">
               <Label>Participants ({clientIds.length})</Label>
-              <Input placeholder="Search participants" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} />
+              <Input placeholder="Search clients" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} />
               <ScrollArea className="h-40 rounded-md border p-2">
                 {filteredClients.map((c) => (
                   <label key={c.id} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
@@ -170,7 +170,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <Label>Ratio (workers : participants)</Label>
+              <Label>Ratio (workers : clients)</Label>
               <select className={selectCls} value={ratio} onChange={(e) => setRatio(e.target.value)}>
                 {["1:1", "1:2", "1:3", "1:4", "1:5"].map((r) => <option key={r}>{r}</option>)}
               </select>
@@ -178,7 +178,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
             <div>
               <Label>Site / house (optional)</Label>
               <select className={selectCls} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                <option value="">At the participant's address</option>
+                <option value="">At the client's address</option>
                 {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
