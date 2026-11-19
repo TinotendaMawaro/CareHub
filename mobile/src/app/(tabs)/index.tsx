@@ -14,6 +14,8 @@ export type ShiftRow = {
   bonus_amount?: number | null;
   planned_break_minutes?: number | null;
   shift_types?: { name: string; colour: string } | null;
+  // this worker's own row (RLS returns only theirs)
+  me?: { confirmation: 'pending' | 'confirmed' | null; planned_start: string | null; planned_end: string | null }[];
   shift_workers: { caregiver_id: string; clock_in_time: string | null; clock_out_time: string | null }[];
   shift_clients: { clients: { first_name: string; last_name: string; address: string | null } | null }[];
 };
@@ -23,7 +25,7 @@ export const SHIFT_SELECT =
   'sites(name),shift_workers(caregiver_id,clock_in_time,clock_out_time),shift_clients(clients(first_name,last_name,address))';
 
 /** Newer columns, asked for separately so the app keeps working against an older database. */
-export const SHIFT_SELECT_EXTRA = ',bonus_amount,planned_break_minutes,shift_types(name,colour)';
+export const SHIFT_SELECT_EXTRA = ',bonus_amount,planned_break_minutes,shift_types(name,colour),me:shift_workers(confirmation,planned_start,planned_end)';
 
 export function clientNames(s: ShiftRow): string {
   return s.shift_clients.map((c) => `${c.clients?.first_name ?? ''} ${c.clients?.last_name ?? ''}`.trim()).filter(Boolean).join(', ');
@@ -31,6 +33,7 @@ export function clientNames(s: ShiftRow): string {
 
 function statusPill(s: ShiftRow, mine?: ShiftRow['shift_workers'][number]) {
   if (s.approval_status === 'rejected') return <Pill text="Needs attention" tone="danger" />;
+  if (!mine?.clock_in_time && s.me?.[0]?.confirmation === 'pending') return <Pill text="Please confirm" tone="warn" />;
   if (mine?.clock_out_time) return <Pill text="Finished" tone="ok" />;
   if (mine?.clock_in_time) return <Pill text="In progress" tone="brand" />;
   if (s.status === 'Cancelled') return <Pill text="Cancelled" tone="danger" />;
@@ -83,11 +86,14 @@ export default function MyShifts() {
 
   const today = localDate(new Date(), org.timezone);
   const live = rows.filter((s) => s.shift_workers.some((w) => w.clock_in_time && !w.clock_out_time));
-  const todays = rows.filter((s) => !live.includes(s) && localDate(s.start_time, org.timezone) === today);
-  const upcoming = rows.filter((s) => !live.includes(s) && !todays.includes(s) && s.start_time > new Date().toISOString());
-  const recent = rows.filter((s) => !live.includes(s) && !todays.includes(s) && !upcoming.includes(s));
+  const pendingIds = new Set(rows.filter((s) => s.me?.[0]?.confirmation === 'pending' && !live.includes(s)).map((s) => s.id));
+  const todays = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && localDate(s.start_time, org.timezone) === today);
+  const upcoming = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && !todays.includes(s) && s.start_time > new Date().toISOString());
+  const recent = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && !todays.includes(s) && !upcoming.includes(s));
 
+  const reply = rows.filter((s) => !live.includes(s) && s.me?.[0]?.confirmation === 'pending' && s.end_time > new Date().toISOString());
   const sections = [
+    { title: 'Needs your reply', data: reply },
     { title: 'In progress', data: live }, { title: 'Today', data: todays }, { title: 'Upcoming', data: upcoming },
     { title: 'Open shifts you can take', data: open, open: true }, { title: 'Recent', data: recent },
   ].filter((x) => x.data.length > 0);
@@ -123,11 +129,14 @@ export default function MyShifts() {
                   {Number(s.bonus_amount) > 0 && <Pill text={`+$${Number(s.bonus_amount).toFixed(0)} bonus`} tone="ok" />}
                 </View>
               )}
+              {s.me?.[0]?.planned_start && s.me[0].planned_end && (
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Your time: {formatTime(s.me[0].planned_start, org.timezone)}-{formatTime(s.me[0].planned_end, org.timezone)}</Text>
+              )}
               {s.reject_reason && <Text style={{ color: colors.danger }}>Office: {s.reject_reason}</Text>}
               {'open' in section ? (
                 <Button title="Take this shift" onPress={() => accept(s)} style={{ marginTop: 6 }} />
               ) : (
-                <Button title={mine?.clock_in_time && !mine.clock_out_time ? 'Open shift' : 'View'} kind="outline" onPress={() => router.push({ pathname: '/shift/[id]', params: { id: s.id } })} style={{ marginTop: 6 }} />
+                <Button title={mine?.clock_in_time && !mine.clock_out_time ? 'Open shift' : s.me?.[0]?.confirmation === 'pending' ? 'Confirm or decline' : 'View'} kind={s.me?.[0]?.confirmation === 'pending' && !mine?.clock_in_time ? 'primary' : 'outline'} onPress={() => router.push({ pathname: '/shift/[id]', params: { id: s.id } })} style={{ marginTop: 6 }} />
               )}
             </Card>
           );

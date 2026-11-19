@@ -75,6 +75,7 @@ export type Shift = {
   cancelPay?: boolean;
   cancelReason?: string;
   workerIds?: string[]; // when queried with shift_workers
+  awaitingConfirmation?: boolean; // someone on the shift has not confirmed yet
   clientIds?: string[]; // when queried with shift_clients
   clockInTime?: Date; // timestamp, written by mobile app
   clockOutTime?: Date; // timestamp, written by mobile app

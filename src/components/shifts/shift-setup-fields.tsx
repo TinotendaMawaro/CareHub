@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Gift, ListChecks, MapPin, Plus, Tag, Timer, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Bold, Eye, Gift, Heading, Italic, Link2, List, ListChecks, ListOrdered, MapPin, PenLine, Plus, Tag, Timer, UserCheck, X } from "lucide-react";
+import { RichText } from "@/components/rich-text";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -21,10 +22,14 @@ export type SetupValue = {
   dropoff: string;
   instructions: string;
   tasks: ShiftTask[];
+  clientSignature: boolean;
+  workerSignature: boolean;
+  confirmation: boolean;
 };
 
 export const EMPTY_SETUP: SetupValue = {
   typeId: "", bonus: "", breakMinutes: "", breakPaid: false, address: "", dropoffOn: false, dropoff: "", instructions: "", tasks: [],
+  clientSignature: false, workerSignature: false, confirmation: false,
 };
 
 export function setupFromShift(s: any): SetupValue {
@@ -38,6 +43,9 @@ export function setupFromShift(s: any): SetupValue {
     dropoff: s.dropoff_address ?? "",
     instructions: s.notes ?? "",
     tasks: [...(s.shift_tasks ?? [])].sort((a: any, b: any) => a.sort - b.sort).map((t: any) => ({ label: t.label, mandatory: t.mandatory })),
+    clientSignature: !!s.require_client_signature,
+    workerSignature: !!s.require_worker_signature,
+    confirmation: !!s.confirmation_required,
   };
 }
 
@@ -51,6 +59,9 @@ export function setupToDetails(v: SetupValue, opts: { includeNotes?: boolean } =
     address: v.address.trim() || null,
     dropoff_address: v.dropoffOn ? v.dropoff.trim() || "To be confirmed" : null,
     tasks: v.tasks.filter((t) => t.label.trim()),
+    require_client_signature: v.clientSignature,
+    require_worker_signature: v.workerSignature,
+    confirmation_required: v.confirmation,
   };
   if (opts.includeNotes !== false) d.notes = v.instructions.trim() || null;
   return d;
@@ -58,10 +69,11 @@ export function setupToDetails(v: SetupValue, opts: { includeNotes?: boolean } =
 
 /** True when the setup holds anything beyond the defaults, so a create needs a follow-up save. */
 export const setupIsEmpty = (v: SetupValue) =>
-  !v.typeId && !Number(v.bonus) && !Number(v.breakMinutes) && !v.address.trim() && !v.dropoffOn && v.tasks.length === 0;
+  !v.typeId && !Number(v.bonus) && !Number(v.breakMinutes) && !v.address.trim() && !v.dropoffOn && v.tasks.length === 0
+  && !v.clientSignature && !v.workerSignature && !v.confirmation;
 
 export function ShiftSetupFields({
-  value, onChange, types, disabled, addressPlaceholder, showInstructions = true,
+  value, onChange, types, disabled, addressPlaceholder, showInstructions = true, clientCount = 1,
 }: {
   value: SetupValue;
   onChange: (v: SetupValue) => void;
@@ -69,6 +81,8 @@ export function ShiftSetupFields({
   disabled?: boolean;
   addressPlaceholder?: string;
   showInstructions?: boolean;
+  /** Client sign-off only applies to 1:1 shifts. */
+  clientCount?: number;
 }) {
   const [task, setTask] = useState("");
   const [mandatory, setMandatory] = useState(false);
@@ -81,6 +95,7 @@ export function ShiftSetupFields({
     setMandatory(false);
   };
   const selected = types.find((t) => t.id === value.typeId);
+  const group = clientCount > 1;
 
   return (
     <div className="space-y-4">
@@ -151,10 +166,7 @@ export function ShiftSetupFields({
       </div>
 
       {showInstructions && (
-        <div className="space-y-1">
-          <Label className="text-xs" htmlFor="setup-instructions">Instructions for staff</Label>
-          <Textarea id="setup-instructions" rows={3} disabled={disabled} placeholder="Door code, routines, what to bring..." value={value.instructions} onChange={(e) => set({ instructions: e.target.value })} />
-        </div>
+        <InstructionsEditor value={value.instructions} disabled={disabled} onChange={(instructions) => set({ instructions })} />
       )}
 
       <div className="space-y-2">
@@ -194,6 +206,107 @@ export function ShiftSetupFields({
         )}
         <p className="text-xs text-muted-foreground">Staff tick tasks off in the app. Required tasks must be done before the shift can be ended.</p>
       </div>
+
+      <fieldset className="space-y-2">
+        <legend className="mb-1 flex items-center gap-1.5 text-xs font-medium"><PenLine className="h-3.5 w-3.5" />Sign-off and confirmation</legend>
+        <label className={cn("flex items-start gap-2 text-sm", group && "opacity-60")}>
+          <Checkbox className="mt-0.5" disabled={disabled || group} checked={value.clientSignature && !group} onCheckedChange={(v) => set({ clientSignature: !!v })} />
+          <span>Client signs when staff clock out{group && <span className="block text-xs text-muted-foreground">Only for 1:1 shifts.</span>}</span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox className="mt-0.5" disabled={disabled} checked={value.workerSignature} onCheckedChange={(v) => set({ workerSignature: !!v })} />
+          Staff sign when they clock out
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox className="mt-0.5" disabled={disabled} checked={value.confirmation} onCheckedChange={(v) => set({ confirmation: !!v })} />
+          <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5" />Ask staff to confirm they can do it</span>
+        </label>
+        {value.confirmation && <p className="pl-6 text-xs text-muted-foreground">Staff get a message and confirm or decline in the app. A decline frees the slot and tells the office.</p>}
+      </fieldset>
+    </div>
+  );
+}
+
+type Tool = { label: string; icon: typeof Bold; sample: string } & ({ wrap: [string, string] } | { line: string });
+const TOOLS: Tool[] = [
+  { label: "Bold", icon: Bold, wrap: ["**", "**"], sample: "bold text" },
+  { label: "Italic", icon: Italic, wrap: ["*", "*"], sample: "text" },
+  { label: "Heading", icon: Heading, line: "# ", sample: "Heading" },
+  { label: "Bulleted list", icon: List, line: "- ", sample: "Item" },
+  { label: "Numbered list", icon: ListOrdered, line: "1. ", sample: "Step" },
+  { label: "Link", icon: Link2, wrap: ["[", "](https://)"], sample: "link text" },
+];
+const LIST_PREFIX = /^(#{1,3}|[-*]|\d+[.)])\s+/;
+
+/** Plain textarea with a formatting toolbar and a preview of how staff will see it in the app. */
+function InstructionsEditor({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [preview, setPreview] = useState(false);
+
+  function apply(tool: Tool) {
+    const el = ref.current;
+    if (!el) return;
+    const a = el.selectionStart, b = el.selectionEnd;
+    let next: string, from: number, to: number;
+    if ("wrap" in tool) {
+      const picked = value.slice(a, b) || tool.sample;
+      next = value.slice(0, a) + tool.wrap[0] + picked + tool.wrap[1] + value.slice(b);
+      from = a + tool.wrap[0].length;
+      to = from + picked.length;
+      if (tool.label === "Link") { from = to + 2; to = from + "https://".length; }
+    } else {
+      const lineStart = value.lastIndexOf("\n", a - 1) + 1;
+      const block = (value.slice(lineStart, b) || tool.sample).split("\n").map((l) => tool.line + l.replace(LIST_PREFIX, "")).join("\n");
+      next = value.slice(0, lineStart) + block + value.slice(Math.max(b, lineStart));
+      from = lineStart;
+      to = lineStart + block.length;
+    }
+    onChange(next);
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(from, to); });
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label className="text-xs" htmlFor="setup-instructions">Instructions for staff</Label>
+        <div className="inline-flex rounded-md border bg-muted/40 p-0.5" role="tablist" aria-label="Instructions view">
+          {[false, true].map((p) => (
+            <button key={String(p)} type="button" role="tab" aria-selected={preview === p} onClick={() => setPreview(p)}
+              className={cn("flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium", preview === p ? "bg-card shadow-sm" : "text-muted-foreground")}>
+              {p ? <><Eye className="h-3 w-3" />Preview</> : <><PenLine className="h-3 w-3" />Write</>}
+            </button>
+          ))}
+        </div>
+      </div>
+      {preview ? (
+        <div className="min-h-[5.5rem] rounded-md border bg-card p-3" aria-label="Instructions preview">
+          {value.trim() ? <RichText text={value} /> : <p className="text-sm text-muted-foreground">Nothing written yet.</p>}
+        </div>
+      ) : (
+        <div className="rounded-md border focus-within:ring-2 focus-within:ring-ring">
+          {!disabled && (
+            <div className="flex flex-wrap gap-0.5 border-b bg-muted/30 p-1" role="toolbar" aria-label="Formatting">
+              {TOOLS.map((t) => (
+                <Button key={t.label} type="button" size="icon" variant="ghost" className="h-7 w-7" title={t.label} aria-label={t.label}
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => apply(t)}>
+                  <t.icon className="h-3.5 w-3.5" />
+                </Button>
+              ))}
+            </div>
+          )}
+          <Textarea
+            id="setup-instructions"
+            ref={ref}
+            rows={4}
+            maxLength={10000}
+            disabled={disabled}
+            placeholder="Door code, routines, what to bring... Use the toolbar for bold, lists and links."
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      )}
     </div>
   );
 }

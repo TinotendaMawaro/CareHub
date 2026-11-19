@@ -307,7 +307,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
 
           <section className="space-y-3 rounded-md border p-3">
             <Label>Shift setup</Label>
-            <ShiftSetupFields value={setup} onChange={setSetup} types={types} />
+            <ShiftSetupFields value={setup} onChange={setSetup} types={types} clientCount={clientIds.length} />
           </section>
 
           <label className="flex items-center gap-2 text-sm">

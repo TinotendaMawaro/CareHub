@@ -14,7 +14,7 @@ const useShiftsCollection = createCollectionHook<Shift, Partial<Shift>>({
   toRow: toShiftRow,
   orderBy: { column: 'start_time', ascending: false },
   // Names come with each row, so labels never depend on the client/staff lists having loaded.
-  select: '*, shift_workers(caregiver_id), shift_clients(client_id), clients!shifts_client_id_fkey(first_name,last_name), caregivers!shifts_caregiver_id_fkey(name)',
+  select: '*, shift_workers(caregiver_id,confirmation), shift_clients(client_id), clients!shifts_client_id_fkey(first_name,last_name), caregivers!shifts_caregiver_id_fkey(name)',
   // Recent past onward: the dashboard never needs years of history in memory.
   scope: (q: any) => q.eq('deleted', false).gte('start_time', new Date(Date.now() - 60 * 86_400_000).toISOString()),
   softDeleteRow: { deleted: true },

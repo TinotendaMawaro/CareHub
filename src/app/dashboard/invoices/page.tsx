@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { money } from "@/lib/format";
+import { useOrganisation } from "@/hooks/use-organisation";
+import { formatWhen, money } from "@/lib/format";
 import { parseRpcError } from "@/lib/shift-rpc";
 import { supabase } from "@/lib/supabase/client";
 
@@ -20,7 +21,8 @@ type Inv = {
   subtotal: number; gst_amount: number; total: number; exported_at: string | null; void_reason: string | null;
   clients: { first_name: string; last_name: string } | null;
 };
-type Line = { id: string; description: string; quantity: number; unit_price: number; amount: number };
+type Line = { id: string; shift_id: string | null; description: string; quantity: number; unit_price: number; amount: number };
+type ProgressNote = { shift_id: string; note: string; author: string | null; written_at: string; edited_at: string | null; edited_by_name: string | null };
 
 const TONE: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700", approved: "bg-blue-100 text-blue-800", sent: "bg-indigo-100 text-indigo-800",
@@ -39,6 +41,8 @@ export default function InvoicesPage() {
   const [range, setRange] = useState(monthRange);
   const [rows, setRows] = useState<Inv[]>([]);
   const [lines, setLines] = useState<Record<string, Line[]>>({});
+  const [progress, setProgress] = useState<Record<string, ProgressNote[]>>({});
+  const { org } = useOrganisation();
   const [open, setOpen] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -73,11 +77,15 @@ export default function InvoicesPage() {
   });
 
   async function toggleOpen(id: string) {
-    setOpen(open === id ? null : id);
+    if (open === id) return setOpen(null);
+    setOpen(id);
     if (!lines[id]) {
-      const { data } = await supabase.from("invoice_lines").select("id,description,quantity,unit_price,amount").eq("invoice_id", id).order("description");
+      const { data } = await supabase.from("invoice_lines").select("id,shift_id,description,quantity,unit_price,amount").eq("invoice_id", id).order("description");
       setLines((l) => ({ ...l, [id]: (data ?? []) as Line[] }));
     }
+    // Always re-read the notes: a correction made on the shift shows here straight away.
+    const { data: notes } = await supabase.rpc("invoice_progress_notes", { p_invoice: id });
+    setProgress((p) => ({ ...p, [id]: (notes ?? []) as ProgressNote[] }));
   }
 
   async function exportXero() {
@@ -170,9 +178,25 @@ export default function InvoicesPage() {
                       <TableCell />
                       <TableCell colSpan={8}>
                         <div className="space-y-1 py-1 text-sm">
-                          {(lines[r.id] ?? []).map((l) => (
-                            <div key={l.id} className="flex justify-between"><span>{l.description}</span><span>{Number(l.quantity)} x {money(l.unit_price)} = {money(l.amount)}</span></div>
-                          ))}
+                          {(lines[r.id] ?? []).map((l, i, all) => {
+                            // progress notes follow the last line of each shift
+                            const lastOfShift = l.shift_id && all[i + 1]?.shift_id !== l.shift_id;
+                            const notes = lastOfShift ? (progress[r.id] ?? []).filter((n) => n.shift_id === l.shift_id) : [];
+                            return (
+                              <Fragment key={l.id}>
+                                <div className="flex flex-wrap justify-between gap-x-3"><span>{l.description}</span><span className="tabular-nums">{Number(l.quantity)} x {money(l.unit_price)} = {money(l.amount)}</span></div>
+                                {notes.map((n, j) => (
+                                  <div key={j} className="ml-3 border-l-2 pl-2 text-xs text-muted-foreground">
+                                    <span className="whitespace-pre-wrap text-foreground">{n.note}</span>
+                                    <span className="block">
+                                      {n.author ?? "Staff"} · {formatWhen(n.written_at, org.timezone)}
+                                      {n.edited_at && ` · corrected ${formatWhen(n.edited_at, org.timezone)}${n.edited_by_name ? ` by ${n.edited_by_name}` : ""}`}
+                                    </span>
+                                  </div>
+                                ))}
+                              </Fragment>
+                            );
+                          })}
                           {Number(r.gst_amount) > 0 && <div className="flex justify-between text-muted-foreground"><span>GST</span><span>{money(r.gst_amount)}</span></div>}
                           {r.void_reason && <div className="text-red-700">Voided: {r.void_reason}</div>}
                         </div>

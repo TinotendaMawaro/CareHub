@@ -195,6 +195,7 @@ export function mapShift(r: any, clients: Client[] = [], caregivers: Caregiver[]
     shiftPublishState: r.shift_publish_state ?? undefined,
     // Present when the query embeds shift_workers / shift_clients.
     workerIds: Array.isArray(r.shift_workers) ? r.shift_workers.map((w: any) => w.caregiver_id) : undefined,
+    awaitingConfirmation: Array.isArray(r.shift_workers) ? r.shift_workers.some((w: any) => w.confirmation === 'pending') : false,
     clientIds: Array.isArray(r.shift_clients) ? r.shift_clients.map((c: any) => c.client_id) : undefined,
     clockInTime: dateOrUndef(r.clock_in_time),
     clockOutTime: dateOrUndef(r.clock_out_time),

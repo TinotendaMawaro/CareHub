@@ -1006,3 +1006,131 @@ describe('scheduler upgrades', () => {
     await rejects(as(db, U.office, () => db.query(`insert into public.shift_types (name, colour) values ('Bad', 'red')`)), /colour_check/);
   });
 });
+
+describe('shift extras', () => {
+  const live = async (worker = CG.w1, client = CL[0]) => (await one(`insert into public.shifts (client_id, caregiver_id, start_time, end_time, support_family)
+    values ('${client}','${worker}', now() - interval '1 hour', now() + interval '2 hours','community') returning id`)).id;
+  const note = (user, cg, s, text) => as(db, user, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${cg}',$2) returning id`, [s, text]));
+  const SIG = 'M10 10 L40 40 L80 20';
+
+  test('signatures: required sign-offs block ending until captured; only the worker on shift can sign', async () => {
+    const s = await live(CG.w1);
+    await rpc(U.office, 'set_shift_details', [[s], { require_client_signature: true, require_worker_signature: true }]);
+    await rejects(rpc(U.w1, 'sign_shift', [s, 'client', 'Pat', SIG, 300, 150]), /not_started/);
+    await rpc(U.w1, 'start_shift', [s, SYD.lat, SYD.lng]);
+    await note(U.w1, CG.w1, s, 'Fine');
+    await rejects(rpc(U.w2, 'sign_shift', [s, 'client', 'Pat', SIG, 300, 150]), /not_assigned/);
+    await rejects(rpc(U.w1, 'sign_shift', [s, 'client', 'Pat', '<script>', 300, 150]), /strokes_check|check constraint/);
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /signature_required: ask the client/);
+    await rpc(U.w1, 'sign_shift', [s, 'client', 'Pat Client', SIG, 300, 150]);
+    await rpc(U.w1, 'sign_shift', [s, 'client', 'Pat Client', SIG + ' L90 90', 300, 150]); // re-signing replaces
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /signature_required: sign the shift yourself/);
+    await rpc(U.w1, 'sign_shift', [s, 'worker', 'Wendy', SIG, 300, 150]);
+    await rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]);
+    assert.equal((await one(`select count(*)::int n from public.shift_signatures where shift_id = $1`, [s])).n, 2);
+    const seen = await as(db, U.w2, async () => (await db.query(`select * from public.shift_signatures where shift_id = $1`, [s])).rows);
+    assert.equal(seen.length, 0, 'other workers cannot see the signatures');
+  });
+
+  test('trips: workers log trips on their own shift (km or odometer); the office sees them', async () => {
+    const s = await live(CG.w2, CL[0]);
+    await rpc(U.w2, 'log_trip', [s, 'to_shift', 12.4, 'Own car', null, null, null]);
+    await rpc(U.w2, 'log_trip', [s, 'in_shift', null, null, 'Shops', 10500, 10508.5]);
+    await rejects(rpc(U.w2, 'log_trip', [s, 'in_shift', null, null, null, 100, 90]), /odometer/);
+    await rejects(rpc(U.w2, 'log_trip', [s, 'later', 5]), /choose when/);
+    await rejects(rpc(U.w3, 'log_trip', [s, 'return', 5]), /not_assigned/);
+    const trips = await q(`select trip_kind, distance from public.mileage where shift_id = $1 order by created_at`, [s]);
+    assert.deepEqual(trips.map((t) => [t.trip_kind, Number(t.distance)]), [['to_shift', 12.4], ['in_shift', 8.5]]);
+    const mine = await one(`select id from public.mileage where shift_id = $1 and trip_kind = 'to_shift'`, [s]);
+    await rejects(rpc(U.w3, 'delete_trip', [mine.id]), /forbidden/);
+    await rpc(U.w2, 'delete_trip', [mine.id]);
+    assert.equal((await one(`select count(*)::int n from public.mileage where shift_id = $1`, [s])).n, 1);
+  });
+
+  test('confirmation: assigned staff start pending, confirm or decline; declining frees the slot and tells the office', async () => {
+    const { shift_ids: [a] } = await create({ client_ids: [CL[2]], worker_ids: [CG.w1], date: '2036-01-07', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    await rpc(U.office, 'set_shift_details', [[a], { confirmation_required: true }]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [a])).confirmation, 'pending');
+    const ask = await one(`select title from public.notifications where user_id = $1 order by timestamp desc limit 1`, [U.w1]);
+    assert.equal(ask.title, 'Please confirm a shift');
+    await rpc(U.w1, 'respond_to_shift', [a, true, null]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [a])).confirmation, 'confirmed');
+    await rejects(rpc(U.w1, 'respond_to_shift', [a, false, null]), /not_pending/);
+
+    // newly assigned staff on a confirmation shift start pending; declining removes them
+    await db.query(`insert into public.shift_workers (shift_id, caregiver_id, role) values ($1, $2, 'support')`, [a, CG.w2]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w2])).confirmation, 'pending');
+    const officeBefore = (await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.office])).n;
+    await rpc(U.w2, 'respond_to_shift', [a, false, 'Away that day']);
+    assert.equal((await one(`select count(*)::int n from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w2])).n, 0);
+    assert.equal((await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.office])).n, officeBefore + 1);
+    const log = await one(`select reason from public.activity_log where shift_id = $1 and action = 'shift_declined'`, [a]);
+    assert.equal(log.reason, 'Away that day');
+    // switching it off clears outstanding requests
+    await db.query(`insert into public.shift_workers (shift_id, caregiver_id, role) values ($1, $2, 'support')`, [a, CG.w3]);
+    await rpc(U.office, 'set_shift_details', [[a], { confirmation_required: false }]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w3])).confirmation, null);
+    // starting a pending shift confirms it
+    const s = await live(CG.w3, CL[1]);
+    await rpc(U.office, 'set_shift_details', [[s], { confirmation_required: true }]);
+    await rpc(U.w3, 'start_shift', [s, SYD.lat, SYD.lng]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [s])).confirmation, 'confirmed');
+  });
+
+  test('per-staff times: must sit inside the shift; pay follows them', async () => {
+    const { shift_ids: [g] } = await create({ client_ids: [CL[0], CL[1]], worker_ids: [CG.w1, CG.w2], ratio: '2:2', date: '2036-02-04', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '15:00' }] });
+    const sh = await one(`select start_time, end_time from public.shifts where id = $1`, [g]);
+    const start = new Date(sh.start_time), end = new Date(sh.end_time);
+    const h = (n) => new Date(start.getTime() + n * 3_600_000).toISOString();
+    await rejects(rpc(U.office, 'set_worker_times', [g, CG.w2, h(-1), h(2)]), /inside the shift/);
+    await rejects(rpc(U.w2, 'set_worker_times', [g, CG.w2, h(0), h(2)]), /forbidden/);
+    await rpc(U.office, 'set_worker_times', [g, CG.w2, h(0), h(3)]);
+    const full = Number(await rpc(U.office, 'compute_worker_pay', [g, CG.w1, null]));
+    const part = Number(await rpc(U.office, 'compute_worker_pay', [g, CG.w2, null]));
+    assert.ok(part > 0 && Math.abs(part * 2 - full) < 0.05, `half the hours, half the pay (${part} vs ${full})`);
+    // setting the shift's own times clears them
+    await rpc(U.office, 'set_worker_times', [g, CG.w2, start.toISOString(), end.toISOString()]);
+    assert.equal((await one(`select planned_start from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [g, CG.w2])).planned_start, null);
+  });
+
+  test('extra charges are billed on the invoice; progress-note corrections show until the invoice is sent', async () => {
+    const item = (await one(`select item_number from public.support_items order by item_number limit 1`)).item_number;
+    const { shift_ids: [s] } = await create({ client_ids: [CL[3]], worker_ids: [CG.w3], date: '2036-03-04', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }] });
+    await rejects(rpc(U.office, 'add_shift_charge', [s, [CL[0]], item, 1]), /every client/);
+    await rejects(rpc(U.w3, 'add_shift_charge', [s, [CL[3]], item, 1]), /forbidden/);
+    assert.equal(await rpc(U.office, 'add_shift_charge', [s, [CL[3]], item, 2, 'Equipment hire', 15]), 1);
+    const { rows: [{ id: noteId }] } = await as(db, U.office, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,$2,$3,'Went to the park') returning id`, [s, CL[3], CG.w3]));
+    await rpc(U.office, 'approve_shift', [s, true]);
+    const [inv] = await rpc(U.office, 'generate_invoices', ['2036-03-01', '2036-03-31', [CL[3]]]);
+    const lines = await q(`select description, amount from public.invoice_lines where invoice_id = $1 order by description`, [inv]);
+    const extra = lines.find((l) => /additional charge/.test(l.description));
+    assert.ok(extra && Number(extra.amount) === 30 && /Equipment hire/.test(extra.description), 'the charge is its own line');
+    await rejects(rpc(U.office, 'remove_shift_charge', [(await one(`select id from public.shift_charges where shift_id = $1`, [s])).id]), /invoiced/);
+
+    // a correction made while the invoice is a draft is what the invoice shows
+    await rpc(U.office, 'edit_shift_note', [noteId, 'Went to the park and had lunch']);
+    const shown = await as(db, U.office, async () => (await db.query(`select * from public.invoice_progress_notes($1)`, [inv])).rows);
+    assert.equal(shown[0].note, 'Went to the park and had lunch');
+    assert.ok(shown[0].edited_at);
+    assert.equal((await one(`select original_note from public.shift_notes where id = $1`, [noteId])).original_note, 'Went to the park');
+    await rejects(rpc(U.w1, 'edit_shift_note', [noteId, 'x']), /forbidden/);
+    await rpc(U.office, 'set_invoice_status', [inv, 'approved']);
+    await rpc(U.office, 'set_invoice_status', [inv, 'sent']);
+    await rejects(rpc(U.office, 'edit_shift_note', [noteId, 'Changed after sending']), /invoice_sent/);
+
+    // voiding releases the charge for the next invoice
+    await rpc(U.office, 'set_invoice_status', [inv, 'approved']);
+    await rpc(U.office, 'void_invoice', [inv, 'Wrong period']);
+    assert.equal((await one(`select invoice_line_id from public.shift_charges where shift_id = $1`, [s])).invoice_line_id, null);
+  });
+
+  test('attachments: staff on the shift can see the list; others and workers cannot add', async () => {
+    const s = await live(CG.w1, CL[0]);
+    await as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/a.pdf', 'Care plan.pdf', 1000, 'application/pdf')`, [s]));
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1, 'other/a.pdf', 'x.pdf', 10, 'application/pdf')`, [s])), /check/);
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/big.pdf', 'big.pdf', 20000000, 'application/pdf')`, [s])), /check/);
+    assert.equal((await as(db, U.w1, async () => (await db.query(`select * from public.shift_attachments where shift_id = $1`, [s])).rows)).length, 1);
+    assert.equal((await as(db, U.w2, async () => (await db.query(`select * from public.shift_attachments where shift_id = $1`, [s])).rows)).length, 0);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/b.pdf', 'b.pdf', 10, 'application/pdf')`, [s])), /row-level security/);
+  });
+});

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Banner, Button, Card, H1, Input, Label, Muted, Pill, Screen, TypeTag, colors } from '@/components/ui';
 import { DocRow } from '@/components/documents';
+import { ConfirmCard, InstructionsCard, SignOffCard, TripsCard, type Attachment } from '@/components/shift-extras';
 import { useSession } from '@/hooks/use-session';
 import { DOC_SELECT, type Doc } from '@/lib/documents';
 import { formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
@@ -26,6 +27,11 @@ type Shift = {
   cancelled_by?: 'client' | 'provider' | null;
   shift_types?: { name: string; colour: string } | null;
   shift_tasks?: Task[];
+  require_client_signature?: boolean;
+  require_worker_signature?: boolean;
+  shift_attachments?: Attachment[];
+  // this worker's own row: RLS only returns their own
+  me?: { caregiver_id: string; confirmation: 'pending' | 'confirmed' | null; planned_start: string | null; planned_end: string | null }[];
 };
 type Task = { id: string; label: string; mandatory: boolean; done_at: string | null; sort: number };
 type Note = { id: string; client_id: string; note: string; category: string; follow_up: boolean; timestamp: string };
@@ -44,7 +50,8 @@ async function currentPosition(): Promise<{ lat: number; lng: number; accuracy: 
 }
 
 const BASE = 'id,start_time,end_time,status,is_sleepover,ratio,notes,approval_status,reject_reason,approved_at,geofence_required,cancel_reason,sites(name,address),shift_clients(clients(id,first_name,last_name,address,allergies,care_plan,emergency_contact,phone)),shift_workers(caregiver_id,clock_in_time,clock_out_time,hours_worked)';
-const EXTRA = ',bonus_amount,planned_break_minutes,break_paid,address,dropoff_address,cancelled_by,shift_types(name,colour),shift_tasks(id,label,mandatory,done_at,sort)';
+const EXTRA = ',bonus_amount,planned_break_minutes,break_paid,address,dropoff_address,cancelled_by,shift_types(name,colour),shift_tasks(id,label,mandatory,done_at,sort),' +
+  'require_client_signature,require_worker_signature,shift_attachments(id,name,path,mime,size_bytes),me:shift_workers(caregiver_id,confirmation,planned_start,planned_end)';
 
 /** Asks for the newer columns first and falls back, so the app keeps working against an older database. */
 async function fetchShiftRow(id: string) {
@@ -76,6 +83,7 @@ export default function ShiftScreen() {
   const [brk, setBrk] = useState('0');
   const [brkTouched, setBrkTouched] = useState(false);
   const [taskBusy, setTaskBusy] = useState<string | null>(null);
+  const [sigMissing, setSigMissing] = useState(0);
 
   const caregiverId = me?.caregiverId ?? '';
   const apply = useCallback(([s, t, n, d]: Awaited<ReturnType<typeof fetchShift>>) => {
@@ -158,6 +166,10 @@ export default function ShiftScreen() {
   const openRequired = tasks.filter((t) => t.mandatory && !t.done_at).length;
   const cancelled = shift.status === 'Cancelled';
   const plannedBreak = Number(shift.planned_break_minutes ?? 0);
+  const myRow = shift.me?.find((w) => w.caregiver_id === me?.caregiverId);
+  const pending = myRow?.confirmation === 'pending' && !started && !cancelled;
+  const needClientSig = !!shift.require_client_signature && clients.length === 1;
+  const needWorkerSig = !!shift.require_worker_signature;
 
   return (
     <Screen>
@@ -172,13 +184,19 @@ export default function ShiftScreen() {
             {Number(shift.bonus_amount) > 0 && <Pill text={`+$${Number(shift.bonus_amount).toFixed(0)} bonus`} tone="ok" />}
           </View>
           {plannedBreak > 0 && <Muted>Includes a {plannedBreak} minute {shift.break_paid ? 'paid' : 'unpaid'} break.</Muted>}
+          {myRow?.planned_start && myRow.planned_end && (
+            <Text style={{ color: colors.text, fontWeight: '700' }}>Your time: {formatTime(myRow.planned_start, org.timezone)}-{formatTime(myRow.planned_end, org.timezone)}</Text>
+          )}
+          {myRow?.confirmation === 'confirmed' && !started && <Muted>You confirmed this shift.</Muted>}
         </View>
+
+        {pending && <ConfirmCard shiftId={shift.id} onConfirmed={() => void load()} onDeclined={() => router.back()} />}
 
         {cancelled && (
           <Banner text={`This shift was cancelled${shift.cancel_reason ? `: ${shift.cancel_reason}` : '.'}${shift.cancelled_by === 'client' ? ' You will still be paid for it.' : ''}`} />
         )}
         {shift.reject_reason && <Banner tone="warn" text={`The office sent this back: ${shift.reject_reason}`} />}
-        {shift.notes && <Banner tone="warn" text={`Instructions: ${shift.notes}`} />}
+        <InstructionsCard text={shift.notes} files={shift.shift_attachments ?? []} />
 
         {address && (
           <Card>
@@ -224,6 +242,20 @@ export default function ShiftScreen() {
           </Card>
         )}
 
+        {!cancelled && <TripsCard shiftId={shift.id} canEdit={!locked} />}
+
+        {started && (
+          <SignOffCard
+            shiftId={shift.id}
+            needClient={needClientSig}
+            needWorker={needWorkerSig}
+            clientName={clients[0] ? `${clients[0].first_name} ${clients[0].last_name}` : ''}
+            workerName={me?.name ?? ''}
+            canSign={started && !ended && !locked}
+            onChanged={setSigMissing}
+          />
+        )}
+
         {team.length > 1 && (
           <Card>
             <Label>Working with</Label>
@@ -255,7 +287,8 @@ export default function ShiftScreen() {
             <Input value={breakValue} onChangeText={(v) => { setBrkTouched(true); setBrk(v); }} keyboardType="number-pad" style={{ width: 120 }} />
             {plannedBreak > 0 && shift.break_paid && <Muted>Your {plannedBreak} minute break is paid, so leave this at 0 unless you took extra unpaid time.</Muted>}
             {openRequired > 0 && <Banner tone="warn" text={`Tick off ${openRequired} required task${openRequired === 1 ? '' : 's'} before ending the shift.`} />}
-            <Button title="End shift" kind="danger" onPress={confirmEnd} loading={busy === 'end'} disabled={openRequired > 0} style={{ marginTop: 8 }} />
+            {sigMissing > 0 && <Banner tone="warn" text={`Collect ${sigMissing === 1 ? 'the signature' : 'both signatures'} in Sign-off before ending the shift.`} />}
+            <Button title="End shift" kind="danger" onPress={confirmEnd} loading={busy === 'end'} disabled={openRequired > 0 || sigMissing > 0} style={{ marginTop: 8 }} />
           </Card>
         )}
         {ended && <Banner tone="ok" text={`You worked ${Number(mine?.hours_worked ?? 0).toFixed(2)} hours on this shift.`} />}

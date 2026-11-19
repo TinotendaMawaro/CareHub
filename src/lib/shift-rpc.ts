@@ -34,7 +34,17 @@ export type ShiftDetails = Partial<{
   dropoff_address: string | null;
   notes: string | null;
   tasks: ShiftTask[];
+  require_client_signature: boolean;
+  require_worker_signature: boolean;
+  confirmation_required: boolean;
 }>;
+
+export type TripKind = "to_shift" | "in_shift" | "return";
+export const TRIP_KINDS: { value: TripKind; label: string }[] = [
+  { value: "to_shift", label: "Travel to the shift" },
+  { value: "in_shift", label: "During the shift" },
+  { value: "return", label: "Return travel" },
+];
 
 export type ShiftBlock = {
   start_time: string; // "HH:MM" in the organisation's timezone
@@ -101,6 +111,14 @@ export const shiftRpc = {
   rebook: (shiftId: string) => call<void>("rebook_shift", { p_shift: shiftId }),
   setDetails: (ids: string[], details: ShiftDetails) => call<number>("set_shift_details", { p_ids: ids, p: details }),
   completeTask: (taskId: string, done: boolean) => call<void>("complete_shift_task", { p_task: taskId, p_done: done }),
+  /** Own start/end for one worker on the shift; pass nulls to follow the shift's times again. */
+  setWorkerTimes: (shiftId: string, caregiverId: string, start: string | null, end: string | null) =>
+    call<void>("set_worker_times", { p_shift: shiftId, p_caregiver: caregiverId, p_start: start, p_end: end }),
+  addCharge: (shiftId: string, clientIds: string[], item: string, quantity: number, description?: string | null, unitPrice?: number | null) =>
+    call<number>("add_shift_charge", { p_shift: shiftId, p_clients: clientIds, p_item: item, p_quantity: quantity, p_description: description ?? null, p_unit_price: unitPrice ?? null }),
+  removeCharge: (id: string) => call<void>("remove_shift_charge", { p_id: id }),
+  deleteTrip: (id: string) => call<void>("delete_trip", { p_id: id }),
+  editNote: (id: string, note: string) => call<void>("edit_shift_note", { p_id: id, p_note: note }),
   remove: (shiftId: string, scope: Scope = "this") => call<number>("delete_shifts", { p_shift: shiftId, p_scope: scope }),
   publish: (shiftId: string) => call<void>("publish_shift", { p_shift: shiftId }),
   approve: (shiftId: string, useScheduled = false) => call<void>("approve_shift", { p_shift: shiftId, p_use_scheduled: useScheduled }),

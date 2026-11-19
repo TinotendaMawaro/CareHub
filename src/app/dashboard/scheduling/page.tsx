@@ -28,7 +28,8 @@ function SchedulingInner() {
   const { toast } = useToast();
   const { shifts, loading, caregivers } = useShifts();
   const [creating, setCreating] = useState(params.get("new") === "1");
-  const [openId, setOpenId] = useState<string | null>(null);
+  // ?shift=<id> opens that shift (links from notifications and other pages)
+  const [openId, setOpenId] = useState<string | null>(() => params.get("shift"));
 
   // Move Scheduled -> Late -> No Show as time passes.
   useEffect(() => {
@@ -119,7 +120,7 @@ function SchedulingInner() {
       </Card>
 
       <CreateShiftsDialog isOpen={creating} onClose={() => { setCreating(false); if (params.get("new")) router.replace("/dashboard/scheduling"); }} />
-      <ShiftDetailSheet shiftId={openId} onClose={() => setOpenId(null)} />
+      <ShiftDetailSheet shiftId={openId} onClose={() => { setOpenId(null); if (params.get("shift")) router.replace("/dashboard/scheduling"); }} />
     </>
   );
 }

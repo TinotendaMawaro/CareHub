@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Gift, GripVertical, Moon, Plus, Rows3, Search, UserX } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Gift, GripVertical, Hourglass, Moon, Plus, Rows3, Search, UserX } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -303,7 +303,7 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", `${s.id}|${row.id}`); e.dataTransfer.effectAllowed = "move"; setDragId(s.id); }}
                                   onDragEnd={() => { setDragId(null); setDropKey(null); }}
                                   onClick={() => setOpenId(s.id)}
-                                  title={`${formatTime(s.startTime, tz)}-${formatTime(s.endTime, tz)} · ${type.name} · ${chipLabel(s, row.id)} · ${s.status}${s.status === "Cancelled" ? (s.cancelledBy === "client" || (!s.cancelledBy && s.cancelPay) ? " (client billed)" : " (no charge)") : ""}${s.bonusAmount ? ` · $${s.bonusAmount} bonus` : ""}`}
+                                  title={`${formatTime(s.startTime, tz)}-${formatTime(s.endTime, tz)} · ${type.name} · ${chipLabel(s, row.id)} · ${s.status}${s.status === "Cancelled" ? (s.cancelledBy === "client" || (!s.cancelledBy && s.cancelPay) ? " (client billed)" : " (no charge)") : ""}${s.bonusAmount ? ` · $${s.bonusAmount} bonus` : ""}${s.awaitingConfirmation ? " · awaiting confirmation" : ""}`}
                                   className={cn(
                                     "group/chip relative flex w-full items-start gap-1 rounded-md border border-l-4 px-1.5 text-left text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow-md",
                                     compact ? "py-0.5" : "py-1",
@@ -323,6 +323,7 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                                       {formatTime(s.startTime, tz)}-{formatTime(s.endTime, tz)}
                                       {s.isSleepover && <Moon className="h-3 w-3" aria-label="Sleepover" />}
                                       {!!s.bonusAmount && <Gift className="h-3 w-3 text-emerald-600" aria-label={`${s.bonusAmount} dollar bonus`} />}
+                                      {s.awaitingConfirmation && <Hourglass className="h-3 w-3 text-amber-600" aria-label="Awaiting confirmation" />}
                                       {compact && <span className="truncate font-normal opacity-80">{chipLabel(s, row.id)}</span>}
                                     </span>
                                     {!compact && <span className="block truncate opacity-60">{type.name}</span>}

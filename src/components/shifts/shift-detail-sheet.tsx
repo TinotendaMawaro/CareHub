@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban, Check, CheckCircle2, Circle, Clock3, Copy, Gift, History, Lock, MapPin, Receipt, RotateCcw,
-  Scissors, Sparkles, Timer, Trash2, UserMinus, UserPlus, X,
+  Hourglass, Scissors, Sparkles, Timer, Trash2, UserCheck, UserMinus, UserPlus, X,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CreateShiftsDialog from "@/components/shifts/create-shifts-dialog";
 import { CancelShiftDialog } from "@/components/shifts/cancel-shift-dialog";
 import { ShiftSetupFields, setupFromShift, setupToDetails, type SetupValue } from "@/components/shifts/shift-setup-fields";
+import { ProgressNote, ShiftAttachments, ShiftCharges, ShiftSignatures, ShiftTrips, WorkerTimes } from "@/components/shifts/shift-extras";
 import { useToast } from "@/hooks/use-toast";
 import { useCatalog } from "@/hooks/use-catalog";
 import { useClients } from "@/hooks/use-clients";
@@ -50,10 +51,17 @@ const ACTIONS: Record<string, string> = {
   assigned: "Staff assigned",
   unassigned: "Staff unassigned",
   sms_sent: "SMS sent",
+  shift_confirmed: "Staff confirmed",
+  shift_declined: "Staff declined",
+  worker_times_set: "Staff times changed",
+  charge_added: "Charge added",
+  charge_removed: "Charge removed",
+  note_edited: "Progress note corrected",
 };
 const FIELD_LABELS: Record<string, string> = {
   shift_type_id: "type", bonus_amount: "bonus", planned_break_minutes: "break", break_paid: "break pay",
   address: "address", dropoff_address: "drop-off", notes: "instructions", tasks: "tasks",
+  require_client_signature: "client signature", require_worker_signature: "staff signature", confirmation_required: "confirmation",
 };
 
 export default function ShiftDetailSheet({
@@ -85,9 +93,12 @@ export default function ShiftDetailSheet({
   const [setupDirty, setSetupDirty] = useState(false);
   const [history, setHistory] = useState<any[] | null>(null);
   const [payEstimate, setPayEstimate] = useState<Record<string, number>>({});
+  const [chargesTotal, setChargesTotal] = useState(0);
+  const [invoiceSent, setInvoiceSent] = useState(false);
+  const [editors, setEditors] = useState<Map<string, string>>(new Map());
   const formKeys = useRef<{ when?: string; edit?: string; setup?: string }>({});
   // Opening or closing the sheet discards unsaved edits. Declared before the loading effect so it runs first.
-  useEffect(() => { formKeys.current = {}; setTab("details"); setHistory(null); setSetupDirty(false); setPayEstimate({}); }, [shiftId]);
+  useEffect(() => { formKeys.current = {}; setTab("details"); setHistory(null); setSetupDirty(false); setPayEstimate({}); setChargesTotal(0); }, [shiftId]);
   const [suggested, setSuggested] = useState<WorkerSuggestion[] | null>(null);
 
   const tz = org.timezone;
@@ -95,17 +106,24 @@ export default function ShiftDetailSheet({
 
   const load = useCallback(async () => {
     if (!shiftId) return;
-    const [s, n] = await Promise.all([
+    const [s, n, inv] = await Promise.all([
       supabase
         .from("shifts")
         .select("*, sites(name,address), shift_clients(client_id, clients(first_name,last_name,address)), shift_workers(*, caregivers(name)), shift_segments(*, support_items(name)), shift_tasks(*, caregivers:done_by(name))")
         .eq("id", shiftId)
         .single(),
       supabase.from("shift_notes").select("*, caregivers(name), clients(first_name,last_name)").eq("shift_id", shiftId).order("timestamp", { ascending: false }),
+      supabase.from("invoice_lines").select("invoices!inner(status)").eq("shift_id", shiftId).in("invoices.status", ["sent", "paid"]).limit(1),
     ]);
     if (s.error) toast({ title: "Could not load shift", description: s.error.message, variant: "destructive" });
     setShift(s.data);
     setNotes(n.data ?? []);
+    setInvoiceSent((inv.data ?? []).length > 0);
+    const editorIds = [...new Set((n.data ?? []).map((x: any) => x.edited_by).filter(Boolean))];
+    if (editorIds.length) {
+      const { data: people } = await supabase.from("profiles").select("id, first_name, last_name, email").in("id", editorIds);
+      setEditors(new Map((people ?? []).map((p: any) => [p.id, [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email])));
+    }
     if (s.data) {
       const next: Record<string, { in: string; out: string; brk: string }> = {};
       for (const w of s.data.shift_workers ?? []) {
@@ -147,7 +165,9 @@ export default function ShiftDetailSheet({
     if (!shiftId) return;
     const offNotes = subscribeToTable("shift_notes", () => void load(), { filter: `shift_id=eq.${shiftId}` });
     const offTasks = subscribeToTable("shift_tasks", () => void load(), { filter: `shift_id=eq.${shiftId}` });
-    return () => { offNotes(); offTasks(); };
+    // confirmations, declines and clock-ins from the app
+    const offWorkers = subscribeToTable("shift_workers", () => void load(), { filter: `shift_id=eq.${shiftId}` });
+    return () => { offNotes(); offTasks(); offWorkers(); };
   }, [shiftId, load]);
 
   const loadHistory = useCallback(async () => {
@@ -205,7 +225,7 @@ export default function ShiftDetailSheet({
   const staffCost = (shift?.shift_workers ?? []).reduce(
     (a: number, w: any) => a + (approved ? Number(w.pay_amount ?? 0) : payEstimate[w.caregiver_id] ?? 0), 0,
   ) + Number(shift?.bonus_amount ?? 0) * Math.max(1, workerIds.length);
-  const billable = cancelled && shift?.cancelled_by === "provider" ? 0 : revenue;
+  const billable = cancelled && shift?.cancelled_by === "provider" ? 0 : revenue + (cancelled ? 0 : chargesTotal);
   const payable = cancelled && shift?.cancelled_by === "provider" ? 0 : staffCost;
   const margin = billable - payable;
 
@@ -333,6 +353,7 @@ export default function ShiftDetailSheet({
                   <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
                   <TabsTrigger value="money" className="flex-1">Money</TabsTrigger>
                   <TabsTrigger value="notes" className="flex-1">Notes{notes.length ? ` (${notes.length})` : ""}</TabsTrigger>
+                  <TabsTrigger value="trips" className="flex-1">Trips</TabsTrigger>
                   <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
                 </TabsList>
 
@@ -394,7 +415,11 @@ export default function ShiftDetailSheet({
                     {(shift.shift_workers ?? []).map((w: any) => (
                       <div key={w.caregiver_id} className="space-y-2 rounded-md border p-2 text-sm">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium">{w.caregivers?.name} <span className="text-xs text-muted-foreground">{w.role}</span></span>
+                          <span className="flex flex-wrap items-center gap-1.5 font-medium">
+                            {w.caregivers?.name} <span className="text-xs font-normal text-muted-foreground">{w.role}</span>
+                            {w.confirmation === "pending" && <Badge variant="outline" className="h-5 gap-1 border-amber-300 px-1.5 text-[10px] text-amber-800"><Hourglass className="h-3 w-3" />Awaiting confirmation</Badge>}
+                            {w.confirmation === "confirmed" && <Badge variant="outline" className="h-5 gap-1 border-emerald-300 px-1.5 text-[10px] text-emerald-700"><UserCheck className="h-3 w-3" />Confirmed</Badge>}
+                          </span>
                           {editable && !w.clock_in_time && (
                             <Button size="icon" variant="ghost" aria-label={`Unassign ${w.caregivers?.name ?? "staff"}`} disabled={busy} onClick={() => run("Staff unassigned", () => shiftRpc.removeWorker(shift.id, w.caregiver_id, scope))}><UserMinus className="h-4 w-4" /></Button>
                           )}
@@ -405,6 +430,14 @@ export default function ShiftDetailSheet({
                           {w.break_minutes ? ` | ${w.break_minutes} min break` : ""}
                           {approved && w.pay_amount != null ? ` | Pay ${money(w.pay_amount)}` : ""}
                         </div>
+                        {(workerIds.length > 1 || w.planned_start) && (
+                          <WorkerTimes
+                            key={`${w.caregiver_id}|${w.planned_start}|${w.planned_end}`}
+                            shift={shift} worker={w} tz={tz} step={step}
+                            editable={!approved && !shift.deleted && !cancelled && !w.clock_in_time}
+                            onSaved={() => { void load(); onChanged?.(); }}
+                          />
+                        )}
                         {!approved && !shift.deleted && (w.clock_in_time || ["Completed", "In Progress", "Late", "No Show"].includes(shift.status)) && edit[w.caregiver_id] && (
                           <div className="grid grid-cols-7 items-end gap-1">
                             <div className="col-span-3"><Label className="text-xs">In</Label><Input type="datetime-local" step={step} value={edit[w.caregiver_id].in} onChange={(e) => setEdit({ ...edit, [w.caregiver_id]: { ...edit[w.caregiver_id], in: e.target.value } })} /></div>
@@ -470,7 +503,9 @@ export default function ShiftDetailSheet({
                       types={types}
                       disabled={!setupEditable || busy}
                       addressPlaceholder={addressHint}
+                      clientCount={clientIds.length}
                     />
+                    <ShiftAttachments shiftId={shift.id} editable={!!setupEditable} />
                     {setupEditable && (
                       <div className="flex flex-wrap items-center gap-2 border-t pt-3">
                         {scopePicker}
@@ -550,6 +585,14 @@ export default function ShiftDetailSheet({
                     ))}
                   </section>
 
+                  <ShiftCharges
+                    shiftId={shift.id}
+                    clients={(shift.shift_clients ?? []).map((c: any) => ({ id: c.client_id, name: `${c.clients?.first_name ?? ""} ${c.clients?.last_name ?? ""}`.trim() }))}
+                    items={items}
+                    editable={!approved && !shift.deleted && !cancelled}
+                    onTotal={setChargesTotal}
+                  />
+
                   <section className="space-y-2">
                     <h3 className="text-sm font-semibold">Staff pay</h3>
                     {(shift.shift_workers ?? []).length === 0 && <p className="text-sm text-muted-foreground">No staff assigned.</p>}
@@ -584,16 +627,23 @@ export default function ShiftDetailSheet({
                   <section className="space-y-2">
                     <h3 className="text-sm font-semibold">Shift notes ({notes.length})</h3>
                     {notes.length === 0 && <p className="text-sm text-muted-foreground">No notes yet. Staff add them from the app during the shift.</p>}
+                    {invoiceSent && notes.length > 0 && <p className="text-xs text-muted-foreground">This shift is on an invoice that has been sent, so its notes are final.</p>}
                     {notes.map((n) => (
-                      <div key={n.id} className="rounded-md bg-muted/50 p-2 text-sm">
-                        <div className="flex flex-wrap justify-between gap-x-2 text-xs text-muted-foreground">
-                          <span>{n.caregivers?.name} about {n.clients?.first_name} {n.clients?.last_name} | {n.category}</span>
-                          <span>{formatWhen(n.timestamp, tz)}{n.follow_up ? " | follow up" : ""}</span>
-                        </div>
-                        <p className="mt-1 whitespace-pre-wrap">{n.note}</p>
-                      </div>
+                      <ProgressNote
+                        key={`${n.id}|${n.edited_at ?? ""}`}
+                        note={n}
+                        tz={tz}
+                        editors={editors}
+                        lockedReason={invoiceSent ? "This shift is on a sent invoice, so its notes are final" : null}
+                        onSaved={() => { void load(); if (tab === "history") void loadHistory(); }}
+                      />
                     ))}
                   </section>
+                  <ShiftSignatures shiftId={shift.id} tz={tz} required={{ client: !!shift.require_client_signature && clientIds.length === 1, worker: !!shift.require_worker_signature }} />
+                </TabsContent>
+
+                <TabsContent value="trips">
+                  <ShiftTrips shiftId={shift.id} tz={tz} editable={!approved && !shift.deleted} />
                 </TabsContent>
 
                 <TabsContent value="history" className="space-y-2">
