@@ -11,6 +11,7 @@ import type { IncidentReport } from "@/lib/types";
 import { useClients } from "@/hooks/use-clients";
 import { useCaregivers } from "@/hooks/use-caregivers";
 import { format } from "date-fns";
+import { Pager, usePaged } from "@/components/ui/pager";
 
 interface IncidentListProps {
   incidents: IncidentReport[];
@@ -49,12 +50,13 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
 
   const getCaregiverName = (caregiverId: string) => {
     const caregiver = caregivers.find(c => c.id === caregiverId);
-    return caregiver?.name || 'Unknown Caregiver';
+    return caregiver?.name || 'Unknown Staff';
   };
 
+  const paged = usePaged(incidents, 10, incidents.length);
   return (
     <div className="grid gap-4">
-      {incidents.map((incident) => (
+      {paged.rows.map((incident) => (
         <Card key={incident.id} className="shadow-sm">
           <CardHeader>
             <div className="flex justify-between items-start">
@@ -97,6 +99,7 @@ export default function IncidentList({ incidents, onStatusChange }: IncidentList
           </CardContent>
         </Card>
       ))}
+      <Pager {...paged.pager} sizes={[10, 20, 50]} />
     </div>
   );
 }

@@ -253,103 +253,54 @@ function haversineKm(
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
 }
 
-function weekStartISO(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-  monday.setHours(0, 0, 0, 0);
-  return monday.toISOString();
-}
-
 export interface WorkerSuggestion {
   caregiverId: string;
   name: string;
+  avatarUrl: string | null;
   score: number;
+  /** On the standing team of one of the shift's clients. */
+  onTeam: boolean;
+  /** Completed shifts with these clients. */
+  pastShifts: number;
+  hoursThisWeek: number;
+  /** Plain-language reasons, e.g. "On Cara's team". */
+  reasons: string[];
+  // Kept for older callers.
   available: boolean;
   hasClash: boolean;
   inducted: boolean;
   preferred: boolean;
-  hoursThisWeek: number;
   distanceKm: number | null;
   availability: string;
 }
 
+/**
+ * Ranked staff for a shift, from the database (suggest_staff): client team first, then
+ * familiarity, then fewest hours this week. People double-booked or on leave are excluded.
+ */
 export async function findWorkerSuggestions(
-  shift: { id: string; clientId: string; startTime: string; endTime: string },
-  caregivers: any[],
+  shift: { id: string },
+  _caregivers: unknown[] = [],
   limit = 10
 ): Promise<WorkerSuggestion[]> {
-  if (!caregivers.length) return [];
-
-  const nowISO = new Date().toISOString();
-  const weekStart = weekStartISO();
-
-  // Anyone already on an overlapping shift (as primary or support worker) is a clash.
-  const { data: clashes } = await supabase
-    .from('shift_workers')
-    .select('caregiver_id, shifts!inner(id, start_time, end_time, status, deleted)')
-    .neq('shifts.status', 'Cancelled')
-    .eq('shifts.deleted', false)
-    .lt('shifts.start_time', shift.endTime)
-    .gt('shifts.end_time', shift.startTime);
-
-  const clashSet = new Set<string>();
-  (clashes ?? []).forEach((row: any) => {
-    if (row.shifts?.id !== shift.id) clashSet.add(row.caregiver_id);
-  });
-
-  const { data: weekShifts } = await supabase
-    .from('shifts')
-    .select('caregiver_id, start_time, end_time')
-    .neq('status', 'Cancelled')
-    .gte('start_time', weekStart)
-    .lt('start_time', nowISO);
-
-  const hoursMap = new Map<string, number>();
-  (weekShifts ?? []).forEach((s: any) => {
-    const h = Math.max(0, (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 3_600_000);
-    hoursMap.set(s.caregiver_id, (hoursMap.get(s.caregiver_id) ?? 0) + h);
-  });
-
-  const candidates: WorkerSuggestion[] = caregivers
-    .filter((c) => c.availability === 'Available' && !clashSet.has(c.id))
-    .map((c) => {
-      const inducted = (c.clients_inducted_for ?? c.clientsInductedFor ?? []).includes(shift.clientId);
-      const preferred = (c.clients_worked_with ?? c.clientsWorkedWith ?? []).includes(shift.clientId);
-      const dist: number | null = null; // workers have no stored home location
-      const hours = hoursMap.get(c.id) ?? 0;
-
-      let score = 0;
-      if (c.availability === 'Available') score += 50;
-      if (inducted) score += 30;
-      if (preferred) score += 20;
-      score -= Math.min(hours / 10, 20);
-      if (dist !== null && dist < 20) score += 10;
-
-      return {
-        caregiverId: c.id,
-        name: c.name,
-        score: Math.round(score * 100) / 100,
-        available: c.availability === 'Available',
-        hasClash: clashSet.has(c.id),
-        inducted,
-        preferred,
-        hoursThisWeek: Math.round(hours * 100) / 100,
-        distanceKm: dist !== null ? Math.round(dist * 100) / 100 : null,
-        availability: c.availability,
-      };
-    })
-    .filter((s) => !s.hasClash)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((s) => ({
-      ...s,
-      distanceKm: s.distanceKm ?? null,
-      hoursThisWeek: s.hoursThisWeek,
-    }));
-
-  return candidates;
+  const { data, error } = await supabase.rpc('suggest_staff', { p_shift: shift.id, p_limit: limit });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r: any) => ({
+    caregiverId: r.caregiver_id,
+    name: r.name,
+    avatarUrl: r.avatar_url ?? null,
+    score: Number(r.score),
+    onTeam: !!r.on_team,
+    pastShifts: Number(r.past_shifts ?? 0),
+    hoursThisWeek: Number(r.hours_this_week ?? 0),
+    reasons: r.reasons ?? [],
+    available: true,
+    hasClash: false,
+    inducted: !!r.on_team,
+    preferred: Number(r.past_shifts ?? 0) > 0,
+    distanceKm: null,
+    availability: 'Available',
+  }));
 }
 
 export async function publishShift(shiftId: string, adminId: string): Promise<boolean> {

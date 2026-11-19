@@ -56,3 +56,6 @@ mobile/.expo
 mobile/dist
 mobile/.env
 .smoke-shots/
+
+# local production test builds
+/.next-test/

@@ -27,7 +27,7 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-3xl font-bold font-headline">Reports & Analytics</h1>
           <p className="text-muted-foreground">
-            Insights into caregiver performance and client care.
+            Insights into staff performance and client care.
           </p>
         </div>
       </div>
@@ -35,9 +35,9 @@ export default function ReportsPage() {
         <div className="lg:col-span-3">
           <Card>
             <CardHeader>
-              <CardTitle>Caregiver Hours</CardTitle>
+              <CardTitle>Staff Hours</CardTitle>
               <CardDescription>
-                Weekly logged hours per caregiver.
+                Weekly logged hours per staff member.
               </CardDescription>
             </CardHeader>
             <CardContent>

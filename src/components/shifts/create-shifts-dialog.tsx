@@ -13,6 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useCatalog } from "@/hooks/use-catalog";
 import { useClients } from "@/hooks/use-clients";
 import { useCaregivers } from "@/hooks/use-caregivers";
+import { useOrganisation } from "@/hooks/use-organisation";
+import { useShiftTypes } from "@/hooks/use-shift-types";
+import { EMPTY_SETUP, ShiftSetupFields, setupIsEmpty, setupToDetails, type SetupValue } from "@/components/shifts/shift-setup-fields";
 import { minWorkers, occurrenceDates, ratioCapacity } from "@/lib/recurrence";
 import { parseRpcError, shiftRpc, type ShiftBlock } from "@/lib/shift-rpc";
 import { money } from "@/lib/format";
@@ -35,7 +38,20 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: () => void;
-  defaults?: { clientIds?: string[]; workerIds?: string[]; date?: string };
+  defaults?: {
+    clientIds?: string[];
+    workerIds?: string[];
+    date?: string;
+    /** Set when copying an existing shift: everything below is prefilled and the title says "Copy shift". */
+    copy?: {
+      siteId?: string | null;
+      ratio?: string;
+      family?: string | null;
+      block: ShiftBlock;
+      geofence?: boolean | null;
+      setup: SetupValue;
+    };
+  };
 };
 
 export default function CreateShiftsDialog({ isOpen, onClose, onCreated, defaults }: Props) {
@@ -43,26 +59,30 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
   const { clients } = useClients();
   const { caregivers } = useCaregivers();
   const { families, items, sites } = useCatalog();
+  const { org } = useOrganisation();
+  const { types } = useShiftTypes();
+  const copy = defaults?.copy;
+  const step = org.minuteInterval * 60;
 
   const today = new Date().toISOString().slice(0, 10);
   const [clientIds, setClientIds] = useState<string[]>(defaults?.clientIds ?? []);
   const [workerIds, setWorkerIds] = useState<string[]>(defaults?.workerIds ?? []);
   const [clientFilter, setClientFilter] = useState("");
   const [workerFilter, setWorkerFilter] = useState("");
-  const [siteId, setSiteId] = useState("");
-  const [ratio, setRatio] = useState("1:1");
-  const [family, setFamily] = useState("");
+  const [siteId, setSiteId] = useState(copy?.siteId ?? "");
+  const [ratio, setRatio] = useState(copy?.ratio ?? "1:1");
+  const [family, setFamily] = useState(copy?.family ?? "");
   const [date, setDate] = useState(defaults?.date ?? today);
-  const [blocks, setBlocks] = useState<ShiftBlock[]>([{ ...PRESETS[0].block }]);
+  const [blocks, setBlocks] = useState<ShiftBlock[]>([copy ? { ...copy.block } : { ...PRESETS[0].block }]);
   const [freq, setFreq] = useState<"none" | "daily" | "weekly">("none");
   const [interval, setIntervalN] = useState(1);
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [endMode, setEndMode] = useState<"until" | "count">("count");
   const [until, setUntil] = useState("");
   const [count, setCount] = useState(8);
-  const [geofence, setGeofence] = useState<"default" | "yes" | "no">("default");
+  const [geofence, setGeofence] = useState<"default" | "yes" | "no">(copy?.geofence == null ? "default" : copy.geofence ? "yes" : "no");
   const [skipConflicts, setSkipConflicts] = useState(false);
-  const [notes, setNotes] = useState("");
+  const [setup, setSetup] = useState<SetupValue>(copy?.setup ?? EMPTY_SETUP);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,7 +101,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
   const needed = minWorkers(ratio, Math.max(clientIds.length, 1));
   const ratioProblem =
     clientIds.length > ratioCapacity(ratio) * Math.max(workerIds.length, 1)
-      ? `${clientIds.length} participants at ${ratio} need at least ${needed} worker${needed > 1 ? "s" : ""} (or a wider ratio).`
+      ? `${clientIds.length} clients at ${ratio} need at least ${needed} worker${needed > 1 ? "s" : ""} (or a wider ratio).`
       : null;
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
@@ -97,7 +117,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
 
   async function submit() {
     setError(null);
-    if (clientIds.length === 0) return setError("Choose at least one participant.");
+    if (clientIds.length === 0) return setError("Choose at least one client.");
     if (blocks.some((b) => !b.start_time || !b.end_time)) return setError("Every shift needs a start and end time.");
     if (ratioProblem) return setError(ratioProblem);
     if (freq === "weekly" && weekdays.length === 0) return setError("Pick at least one day of the week.");
@@ -109,11 +129,14 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
     try {
       const res = await shiftRpc.create({
         client_ids: clientIds, worker_ids: workerIds, site_id: siteId || null, ratio, support_family: family || null,
-        date, blocks, geofence_required: geofence === "default" ? null : geofence === "yes", notes: notes || undefined,
+        date, blocks, geofence_required: geofence === "default" ? null : geofence === "yes", notes: setup.instructions.trim() || undefined,
         skip_conflicts: skipConflicts,
         repeat: { freq, interval, weekdays: freq === "weekly" ? weekdays : undefined,
                   until: endMode === "until" ? until || undefined : undefined, count: endMode === "count" ? count : undefined },
       });
+      if (res.shift_ids.length && !setupIsEmpty(setup)) {
+        await shiftRpc.setDetails(res.shift_ids, setupToDetails(setup, { includeNotes: false }));
+      }
       toast({
         title: `${res.shift_ids.length} shift${res.shift_ids.length === 1 ? "" : "s"} created`,
         description: res.skipped.length ? `${res.skipped.length} skipped because a worker was already booked.` : undefined,
@@ -134,9 +157,11 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New shifts</DialogTitle>
+          <DialogTitle>{copy ? "Copy shift" : "New shifts"}</DialogTitle>
           <DialogDescription>
-            Create one or many shifts at once: several time blocks a day, repeating, for one or more participants and workers.
+            {copy
+              ? "Everything from the original shift is filled in. Change the date, people or times, then create. Nothing is saved until you do."
+              : "Create one or many shifts at once: several time blocks a day, repeating, for one or more clients and workers."}
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +169,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
           <div className="grid gap-4 md:grid-cols-2">
             <section className="space-y-2">
               <Label>Participants ({clientIds.length})</Label>
-              <Input placeholder="Search participants" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} />
+              <Input placeholder="Search clients" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} />
               <ScrollArea className="h-40 rounded-md border p-2">
                 {filteredClients.map((c) => (
                   <label key={c.id} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
@@ -170,7 +195,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <Label>Ratio (workers : participants)</Label>
+              <Label>Ratio (workers : clients)</Label>
               <select className={selectCls} value={ratio} onChange={(e) => setRatio(e.target.value)}>
                 {["1:1", "1:2", "1:3", "1:4", "1:5"].map((r) => <option key={r}>{r}</option>)}
               </select>
@@ -178,7 +203,7 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
             <div>
               <Label>Site / house (optional)</Label>
               <select className={selectCls} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                <option value="">At the participant's address</option>
+                <option value="">At the client's address</option>
                 {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
@@ -205,8 +230,8 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
             </div>
             {blocks.map((b, i) => (
               <div key={i} className="grid gap-2 rounded-md border p-3 md:grid-cols-12">
-                <div className="md:col-span-2"><Label className="text-xs">Start</Label><Input type="time" value={b.start_time} onChange={(e) => updateBlock(i, { start_time: e.target.value })} /></div>
-                <div className="md:col-span-2"><Label className="text-xs">End</Label><Input type="time" value={b.end_time} onChange={(e) => updateBlock(i, { end_time: e.target.value })} /></div>
+                <div className="md:col-span-2"><Label className="text-xs">Start</Label><Input type="time" step={step} value={b.start_time} onChange={(e) => updateBlock(i, { start_time: e.target.value })} /></div>
+                <div className="md:col-span-2"><Label className="text-xs">End</Label><Input type="time" step={step} value={b.end_time} onChange={(e) => updateBlock(i, { end_time: e.target.value })} /></div>
                 <div className="md:col-span-5">
                   <Label className="text-xs">Cost code (price guide)</Label>
                   <select className={selectCls} value={b.item_number ?? ""} onChange={(e) => updateBlock(i, { item_number: e.target.value || null })}>
@@ -278,8 +303,12 @@ export default function CreateShiftsDialog({ isOpen, onClose, onCreated, default
                 <option value="no">Do not check location</option>
               </select>
             </div>
-            <div><Label>Notes for the worker</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" /></div>
           </div>
+
+          <section className="space-y-3 rounded-md border p-3">
+            <Label>Shift setup</Label>
+            <ShiftSetupFields value={setup} onChange={setSetup} types={types} clientCount={clientIds.length} />
+          </section>
 
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={skipConflicts} onCheckedChange={(v) => setSkipConflicts(!!v)} />

@@ -116,7 +116,7 @@ export default function TimesheetDetailPage() {
         <CardContent>
           <Table>
             <TableHeader><TableRow>
-              <TableHead>When</TableHead><TableHead>Participant</TableHead><TableHead>Status</TableHead>
+              <TableHead>When</TableHead><TableHead>Client</TableHead><TableHead>Status</TableHead>
               <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Pay</TableHead><TableHead />
             </TableRow></TableHeader>
             <TableBody>

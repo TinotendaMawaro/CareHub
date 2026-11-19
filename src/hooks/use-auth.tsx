@@ -9,10 +9,24 @@ import { TermsGate } from "@/components/auth/terms-gate";
 
 export type AppRole = "admin" | "manager" | "office" | "caregiver";
 
+export type MyProfile = { firstName: string; lastName: string; fullName: string; phone: string; avatarUrl: string | null };
+
+const profileFrom = (d: any, email?: string): MyProfile => {
+  const firstName = d?.first_name ?? "";
+  const lastName = d?.last_name ?? "";
+  return {
+    firstName, lastName, phone: d?.phone ?? "", avatarUrl: d?.avatar_url ?? null,
+    fullName: `${firstName} ${lastName}`.trim() || (email ?? ""),
+  };
+};
+
 type AuthContextType = {
   user: User | null;
   session: Session | null;
   role: AppRole | null;
+  /** The signed-in user's own name and photo. */
+  profile: MyProfile | null;
+  refreshProfile: () => Promise<void>;
   /** admin, manager or office: may use the web dashboard. */
   isOffice: boolean;
   isAdmin: boolean;
@@ -24,6 +38,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   role: null,
+  profile: null,
+  refreshProfile: async () => {},
   isOffice: false,
   isAdmin: false,
   loading: true,
@@ -35,6 +51,7 @@ const OFFICE_ROLES: AppRole[] = ["admin", "manager", "office"];
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   // Whether a session is already held, so token refreshes do not flash the loading state.
   const hasSession = useRef(false);
@@ -49,19 +66,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (active) {
           setSession(null);
           setRole(null);
+          setProfile(null);
           setLoading(false);
         }
         return;
       }
       const { data } = await supabase
         .from("profiles")
-        .select("role, active")
+        .select("role, active, first_name, last_name, phone, avatar_url")
         .eq("id", next.user.id)
         .maybeSingle();
       if (!active) return;
       hasSession.current = true;
       setSession(next);
       setRole(data && data.active !== false ? ((data.role as AppRole) ?? null) : null);
+      setProfile(data ? profileFrom(data, next.user.email) : null);
       setLoading(false);
     };
 
@@ -88,6 +107,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  const refreshProfile = async () => {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    const { data } = await supabase.from("profiles").select("first_name, last_name, phone, avatar_url").eq("id", u.user.id).maybeSingle();
+    setProfile(data ? profileFrom(data, u.user.email) : null);
+  };
+
   const logout = async (showSplash = false) => {
     if (showSplash) {
       window.location.href = "/logout";
@@ -100,6 +126,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     user: session?.user ?? null,
     session,
     role,
+    profile,
+    refreshProfile,
     isOffice: !!role && OFFICE_ROLES.includes(role),
     isAdmin: role === "admin",
     loading,
@@ -130,7 +158,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           <h1 className="text-xl font-semibold">This dashboard is for office staff</h1>
           <p className="text-sm text-muted-foreground">
             {role === "caregiver"
-              ? "Support workers use the CareHub mobile app to see shifts, start and end them, and write notes."
+              ? "Staff use the CareHub mobile app to see shifts, start and end them, and write notes."
               : "Your account has no CareHub role yet. Ask an administrator to set one up."}
           </p>
           <button

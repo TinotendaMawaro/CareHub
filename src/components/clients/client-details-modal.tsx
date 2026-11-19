@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Calendar, Mail, MapPin, User, FileText, AlertTriangle } from "lucide-react";
 import type { Client } from "@/lib/types";
+import { ClientTeamPanel } from "./client-team-panel";
 
 interface ClientDetailsModalProps {
   isOpen: boolean;
@@ -29,7 +30,8 @@ export default function ClientDetailsModal({
   if (!client) return null;
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    if (!dateString) return 'Not recorded';
+    return new Date(dateString).toLocaleDateString('en-AU', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -84,7 +86,7 @@ export default function ClientDetailsModal({
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium">Age:</span>
-                  <span>{calculateAge(client.dateOfBirth)} years old</span>
+                  <span>{client.dateOfBirth ? `${calculateAge(client.dateOfBirth)} years old` : 'Not recorded'}</span>
                 </div>
                </div>
                <div className="space-y-2">
@@ -132,26 +134,7 @@ export default function ClientDetailsModal({
 
           <Separator />
 
-          {/* Care Information */}
-          <div>
-            <h3 className="text-lg font-medium mb-3">Care Information</h3>
-            <div className="space-y-3">
-              <div>
-                <span className="font-medium text-sm">Assigned Caregivers:</span>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {client.assignedCaregivers.length > 0 ? (
-                    client.assignedCaregivers.map((caregiverId, index) => (
-                      <Badge key={caregiverId || index} variant="secondary">
-                        {caregiverId}
-                      </Badge>
-                    ))
-                  ) : (
-                    <Badge variant="secondary">Unassigned</Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          <ClientTeamPanel clientId={client.id} clientName={client.firstName || client.fullName} />
 
           {/* Notes */}
           {client.notes && (

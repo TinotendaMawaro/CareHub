@@ -14,13 +14,17 @@ export function TwoFactorCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data } = await supabase.auth.mfa.listFactors();
+  const apply = useCallback(({ data }: Awaited<ReturnType<typeof supabase.auth.mfa.listFactors>>) => {
     const verified = data?.totp.find((f) => f.status === 'verified');
     setFactorId(verified?.id ?? null);
     setStatus(verified ? 'on' : 'off');
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  const load = useCallback(async () => apply(await supabase.auth.mfa.listFactors()), [apply]);
+  useEffect(() => {
+    let alive = true;
+    void supabase.auth.mfa.listFactors().then((r) => { if (alive) apply(r); });
+    return () => { alive = false; };
+  }, [apply]);
 
   async function start() {
     setBusy(true);
@@ -87,7 +91,7 @@ export function TwoFactorCard() {
 
       {status === 'off' && !setup && (
         <>
-          <Muted>Add a second check at sign-in so a stolen password alone can't open your account.</Muted>
+          <Muted>Add a second check at sign-in so a stolen password alone can&apos;t open your account.</Muted>
           <Button title="Set up" kind="outline" onPress={start} loading={busy} />
         </>
       )}

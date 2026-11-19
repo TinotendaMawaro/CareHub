@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import { supabase } from "@/lib/supabase/client";
 import { refreshOnChange } from "@/lib/supabase/realtime";
 import { mapShiftNote } from "@/lib/supabase/mappers";
@@ -81,12 +82,13 @@ export default function ShiftNotesPage() {
     return <Badge variant={variants[status]}>{status}</Badge>;
   };
 
+  const paged = usePaged(shiftNotes, 20, shiftNotes.length);
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold font-headline">Shift Notes</h1>
-          <p className="text-muted-foreground">Manage shift notes from caregivers.</p>
+          <p className="text-muted-foreground">Manage shift notes from staff.</p>
         </div>
       </div>
 
@@ -94,7 +96,7 @@ export default function ShiftNotesPage() {
         <CardHeader>
           <CardTitle>Shift Notes List</CardTitle>
           <CardDescription>
-            Review and update the status of shift notes submitted by caregivers.
+            Review and update the status of shift notes submitted by staff.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -103,10 +105,11 @@ export default function ShiftNotesPage() {
           ) : shiftNotes.length === 0 ? (
             <div className="text-center py-4">No shift notes found.</div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Caregiver</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Note</TableHead>
                   <TableHead>Timestamp</TableHead>
@@ -115,12 +118,12 @@ export default function ShiftNotesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {shiftNotes.map((note) => (
+                {paged.rows.map((note) => (
                   <TableRow key={note.id}>
                     <TableCell>{getCaregiverName(note.caregiverId)}</TableCell>
                     <TableCell>{getClientName(note.clientId)}</TableCell>
                     <TableCell className="max-w-xs truncate">{note.note}</TableCell>
-                    <TableCell>{note.timestamp.toLocaleString()}</TableCell>
+                    <TableCell className="whitespace-nowrap">{note.timestamp.toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</TableCell>
                     <TableCell>{getStatusBadge(note.status)}</TableCell>
                     <TableCell>
                       <Select
@@ -142,6 +145,8 @@ export default function ShiftNotesPage() {
                 ))}
               </TableBody>
             </Table>
+            <Pager {...paged.pager} />
+            </>
           )}
         </CardContent>
       </Card>

@@ -1,15 +1,21 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, SectionList, Text, View } from 'react-native';
-import { Button, Card, Empty, Muted, Pill, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
+import { Button, Card, Empty, Muted, Pill, Screen, TAB_BAR_SPACE, TypeTag, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
-import { formatDateTime, formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
+import { formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
 import { parseError, rpc, supabase } from '@/lib/supabase';
 
 export type ShiftRow = {
   id: string; start_time: string; end_time: string; status: string; is_sleepover: boolean; ratio: string;
   approval_status: string; reject_reason: string | null; shift_publish_state: string | null; notes: string | null;
   sites: { name: string } | null;
+  // Present once the scheduler upgrade is in the database.
+  bonus_amount?: number | null;
+  planned_break_minutes?: number | null;
+  shift_types?: { name: string; colour: string } | null;
+  // this worker's own row (RLS returns only theirs)
+  me?: { confirmation: 'pending' | 'confirmed' | null; planned_start: string | null; planned_end: string | null }[];
   shift_workers: { caregiver_id: string; clock_in_time: string | null; clock_out_time: string | null }[];
   shift_clients: { clients: { first_name: string; last_name: string; address: string | null } | null }[];
 };
@@ -18,12 +24,16 @@ export const SHIFT_SELECT =
   'id,start_time,end_time,status,is_sleepover,ratio,approval_status,reject_reason,shift_publish_state,notes,' +
   'sites(name),shift_workers(caregiver_id,clock_in_time,clock_out_time),shift_clients(clients(first_name,last_name,address))';
 
+/** Newer columns, asked for separately so the app keeps working against an older database. */
+export const SHIFT_SELECT_EXTRA = ',bonus_amount,planned_break_minutes,shift_types(name,colour),me:shift_workers(confirmation,planned_start,planned_end)';
+
 export function clientNames(s: ShiftRow): string {
   return s.shift_clients.map((c) => `${c.clients?.first_name ?? ''} ${c.clients?.last_name ?? ''}`.trim()).filter(Boolean).join(', ');
 }
 
 function statusPill(s: ShiftRow, mine?: ShiftRow['shift_workers'][number]) {
   if (s.approval_status === 'rejected') return <Pill text="Needs attention" tone="danger" />;
+  if (!mine?.clock_in_time && s.me?.[0]?.confirmation === 'pending') return <Pill text="Please confirm" tone="warn" />;
   if (mine?.clock_out_time) return <Pill text="Finished" tone="ok" />;
   if (mine?.clock_in_time) return <Pill text="In progress" tone="brand" />;
   if (s.status === 'Cancelled') return <Pill text="Cancelled" tone="danger" />;
@@ -43,9 +53,11 @@ export default function MyShifts() {
   const load = useCallback(async () => {
     const from = new Date(Date.now() - 36 * 3_600_000).toISOString();
     const to = new Date(Date.now() + 30 * 86_400_000).toISOString();
-    const { data, error } = await supabase
-      .from('shifts').select(SHIFT_SELECT).eq('deleted', false).neq('status', 'Cancelled')
+    const query = (cols: string) => supabase
+      .from('shifts').select(cols).eq('deleted', false).neq('status', 'Cancelled')
       .gte('end_time', from).lte('start_time', to).order('start_time');
+    let { data, error } = await query(SHIFT_SELECT + SHIFT_SELECT_EXTRA);
+    if (error) ({ data, error } = await query(SHIFT_SELECT));
     if (error) Alert.alert('Could not load shifts', error.message);
     const all = (data ?? []) as unknown as ShiftRow[];
     setRows(all.filter((s) => s.shift_workers.length > 0));
@@ -74,11 +86,14 @@ export default function MyShifts() {
 
   const today = localDate(new Date(), org.timezone);
   const live = rows.filter((s) => s.shift_workers.some((w) => w.clock_in_time && !w.clock_out_time));
-  const todays = rows.filter((s) => !live.includes(s) && localDate(s.start_time, org.timezone) === today);
-  const upcoming = rows.filter((s) => !live.includes(s) && !todays.includes(s) && s.start_time > new Date().toISOString());
-  const recent = rows.filter((s) => !live.includes(s) && !todays.includes(s) && !upcoming.includes(s));
+  const pendingIds = new Set(rows.filter((s) => s.me?.[0]?.confirmation === 'pending' && !live.includes(s)).map((s) => s.id));
+  const todays = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && localDate(s.start_time, org.timezone) === today);
+  const upcoming = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && !todays.includes(s) && s.start_time > new Date().toISOString());
+  const recent = rows.filter((s) => !live.includes(s) && !pendingIds.has(s.id) && !todays.includes(s) && !upcoming.includes(s));
 
+  const reply = rows.filter((s) => !live.includes(s) && s.me?.[0]?.confirmation === 'pending' && s.end_time > new Date().toISOString());
   const sections = [
+    { title: 'Needs your reply', data: reply },
     { title: 'In progress', data: live }, { title: 'Today', data: todays }, { title: 'Upcoming', data: upcoming },
     { title: 'Open shifts you can take', data: open, open: true }, { title: 'Recent', data: recent },
   ].filter((x) => x.data.length > 0);
@@ -97,22 +112,31 @@ export default function MyShifts() {
         renderItem={({ item: s, section }) => {
           const mine = s.shift_workers.find((w) => w.caregiver_id === me?.caregiverId);
           return (
-            <Card style={{ marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+            <Card style={{ marginBottom: 10, borderLeftWidth: s.shift_types ? 4 : undefined, borderLeftColor: s.shift_types?.colour }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: colors.text }}>
                   {formatDay(s.start_time, org.timezone)} {formatTime(s.start_time, org.timezone)}-{formatTime(s.end_time, org.timezone)}
                 </Text>
                 {'open' in section ? <Pill text="Open" tone="brand" /> : statusPill(s, mine)}
               </View>
-              <Text style={{ color: colors.text }}>{clientNames(s) || 'Participant'}</Text>
+              <Text style={{ color: colors.text }} numberOfLines={2}>{clientNames(s) || 'Client'}</Text>
               <Muted>
-                {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} participants` : ''}
+                {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} clients` : ''}
               </Muted>
+              {(s.shift_types || Number(s.bonus_amount) > 0) && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                  {s.shift_types && <TypeTag name={s.shift_types.name} colour={s.shift_types.colour} />}
+                  {Number(s.bonus_amount) > 0 && <Pill text={`+$${Number(s.bonus_amount).toFixed(0)} bonus`} tone="ok" />}
+                </View>
+              )}
+              {s.me?.[0]?.planned_start && s.me[0].planned_end && (
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Your time: {formatTime(s.me[0].planned_start, org.timezone)}-{formatTime(s.me[0].planned_end, org.timezone)}</Text>
+              )}
               {s.reject_reason && <Text style={{ color: colors.danger }}>Office: {s.reject_reason}</Text>}
               {'open' in section ? (
                 <Button title="Take this shift" onPress={() => accept(s)} style={{ marginTop: 6 }} />
               ) : (
-                <Button title={mine?.clock_in_time && !mine.clock_out_time ? 'Open shift' : 'View'} kind="outline" onPress={() => router.push({ pathname: '/shift/[id]', params: { id: s.id } })} style={{ marginTop: 6 }} />
+                <Button title={mine?.clock_in_time && !mine.clock_out_time ? 'Open shift' : s.me?.[0]?.confirmation === 'pending' ? 'Confirm or decline' : 'View'} kind={s.me?.[0]?.confirmation === 'pending' && !mine?.clock_in_time ? 'primary' : 'outline'} onPress={() => router.push({ pathname: '/shift/[id]', params: { id: s.id } })} style={{ marginTop: 6 }} />
               )}
             </Card>
           );

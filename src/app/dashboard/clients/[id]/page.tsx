@@ -26,8 +26,9 @@ import { useClients } from "@/hooks/use-clients";
 import { useParticipantPlans, usePlanBudgets, useBudgetSummary, useExpensesNew, useBudgetAdjustments } from "@/hooks/use-budgets";
 import { useShifts } from "@/hooks/use-shifts";
 import ShiftTable from "@/components/scheduling/ShiftTable";
-import { ArrowLeft, Plus, Download } from "lucide-react";
+import { ArrowLeft, Plus, Download, CalendarDays } from "lucide-react";
 import Link from "next/link";
+import { downloadCsv } from "@/lib/csv";
 import type { ParticipantPlan, PlanBudget, BudgetSummary, NewExpense, BudgetAdjustment } from "@/lib/types";
 
 export default function ClientProfilePage() {
@@ -81,22 +82,25 @@ export default function ClientProfilePage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Link href="/dashboard/clients">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div>
-            <h1 className="text-2xl font-semibold font-headline">{client.fullName}</h1>
-            <p className="text-sm text-muted-foreground">Participant profile</p>
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-semibold font-headline">{client.fullName}</h1>
+            <p className="text-sm text-muted-foreground">Client profile</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/print/calendar?kind=client&id=${client.id}`}><CalendarDays className="mr-1.5 h-4 w-4" />Print calendar</Link>
+          </Button>
           <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-            <SelectTrigger className="w-64">
+            <SelectTrigger className="w-full sm:w-72">
               <SelectValue placeholder="Select plan" />
             </SelectTrigger>
             <SelectContent>
@@ -127,7 +131,7 @@ export default function ClientProfilePage() {
         <TabsContent value="overview" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Participant Details</CardTitle>
+              <CardTitle>Client Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div>
@@ -248,7 +252,7 @@ export default function ClientProfilePage() {
         </TabsContent>
 
         <TabsContent value="expenses" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">Expenses</h2>
             <Button onClick={handleAddExpense}>
               <Plus className="mr-2 h-4 w-4" /> Add Expense
@@ -283,9 +287,17 @@ export default function ClientProfilePage() {
         </TabsContent>
 
         <TabsContent value="ledger" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">Budget Ledger</h2>
-            <Button variant="outline" onClick={() => {}}>
+            <Button
+              variant="outline"
+              disabled={!selectedPlan || adjustments.length === 0}
+              onClick={() => downloadCsv(
+                `ledger-${client.fullName.replace(/[^\w-]+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`,
+                [["Date", "Type", "Category", "State", "Amount"],
+                  ...adjustments.map((a) => [new Date(a.createdAt).toLocaleDateString("en-AU"), "Adjustment", a.categoryNo ?? "", "spent", a.amount.toFixed(2)])],
+              )}
+            >
               <Download className="mr-2 h-4 w-4" /> Export CSV
             </Button>
           </div>

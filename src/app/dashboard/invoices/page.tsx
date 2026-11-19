@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import { ChevronDown, ChevronRight, Download, FilePlus2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { money } from "@/lib/format";
+import { useOrganisation } from "@/hooks/use-organisation";
+import { formatWhen, money } from "@/lib/format";
 import { parseRpcError } from "@/lib/shift-rpc";
 import { supabase } from "@/lib/supabase/client";
 
@@ -19,7 +21,8 @@ type Inv = {
   subtotal: number; gst_amount: number; total: number; exported_at: string | null; void_reason: string | null;
   clients: { first_name: string; last_name: string } | null;
 };
-type Line = { id: string; description: string; quantity: number; unit_price: number; amount: number };
+type Line = { id: string; shift_id: string | null; description: string; quantity: number; unit_price: number; amount: number };
+type ProgressNote = { shift_id: string; note: string; author: string | null; written_at: string; edited_at: string | null; edited_by_name: string | null };
 
 const TONE: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700", approved: "bg-blue-100 text-blue-800", sent: "bg-indigo-100 text-indigo-800",
@@ -38,6 +41,8 @@ export default function InvoicesPage() {
   const [range, setRange] = useState(monthRange);
   const [rows, setRows] = useState<Inv[]>([]);
   const [lines, setLines] = useState<Record<string, Line[]>>({});
+  const [progress, setProgress] = useState<Record<string, ProgressNote[]>>({});
+  const { org } = useOrganisation();
   const [open, setOpen] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -72,11 +77,15 @@ export default function InvoicesPage() {
   });
 
   async function toggleOpen(id: string) {
-    setOpen(open === id ? null : id);
+    if (open === id) return setOpen(null);
+    setOpen(id);
     if (!lines[id]) {
-      const { data } = await supabase.from("invoice_lines").select("id,description,quantity,unit_price,amount").eq("invoice_id", id).order("description");
+      const { data } = await supabase.from("invoice_lines").select("id,shift_id,description,quantity,unit_price,amount").eq("invoice_id", id).order("description");
       setLines((l) => ({ ...l, [id]: (data ?? []) as Line[] }));
     }
+    // Always re-read the notes: a correction made on the shift shows here straight away.
+    const { data: notes } = await supabase.rpc("invoice_progress_notes", { p_invoice: id });
+    setProgress((p) => ({ ...p, [id]: (notes ?? []) as ProgressNote[] }));
   }
 
   async function exportXero() {
@@ -101,12 +110,13 @@ export default function InvoicesPage() {
   const totals = useMemo(() => rows.filter((r) => r.status !== "void").reduce((a, r) => a + Number(r.total), 0), [rows]);
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const paged = usePaged(rows, 20, rows.length);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Invoices</h1>
-          <p className="text-sm text-muted-foreground">Built from approved shifts, one invoice per participant. Export to Xero as a CSV import.</p>
+          <p className="text-sm text-muted-foreground">Built from approved shifts, one invoice per client. Export to Xero as a CSV import.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div><Label className="text-xs">From</Label><Input type="date" value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} /></div>
@@ -130,14 +140,14 @@ export default function InvoicesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8" /><TableHead className="w-8" />
-                <TableHead>Number</TableHead><TableHead>Participant</TableHead><TableHead>Period</TableHead>
+                <TableHead>Number</TableHead><TableHead>Client</TableHead><TableHead>Period</TableHead>
                 <TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead><TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>}
               {!loading && rows.length === 0 && <TableRow><TableCell colSpan={9} className="py-10 text-center text-muted-foreground">No invoices yet. Approve shifts, then generate.</TableCell></TableRow>}
-              {rows.map((r) => (
+              {paged.rows.map((r) => (
                 <Fragment key={r.id}>
                   <TableRow>
                     <TableCell>{["approved", "sent", "paid"].includes(r.status) && <Checkbox checked={picked.has(r.id)} onCheckedChange={() => toggle(r.id)} aria-label="Select invoice" />}</TableCell>
@@ -168,9 +178,25 @@ export default function InvoicesPage() {
                       <TableCell />
                       <TableCell colSpan={8}>
                         <div className="space-y-1 py-1 text-sm">
-                          {(lines[r.id] ?? []).map((l) => (
-                            <div key={l.id} className="flex justify-between"><span>{l.description}</span><span>{Number(l.quantity)} x {money(l.unit_price)} = {money(l.amount)}</span></div>
-                          ))}
+                          {(lines[r.id] ?? []).map((l, i, all) => {
+                            // progress notes follow the last line of each shift
+                            const lastOfShift = l.shift_id && all[i + 1]?.shift_id !== l.shift_id;
+                            const notes = lastOfShift ? (progress[r.id] ?? []).filter((n) => n.shift_id === l.shift_id) : [];
+                            return (
+                              <Fragment key={l.id}>
+                                <div className="flex flex-wrap justify-between gap-x-3"><span>{l.description}</span><span className="tabular-nums">{Number(l.quantity)} x {money(l.unit_price)} = {money(l.amount)}</span></div>
+                                {notes.map((n, j) => (
+                                  <div key={j} className="ml-3 border-l-2 pl-2 text-xs text-muted-foreground">
+                                    <span className="whitespace-pre-wrap text-foreground">{n.note}</span>
+                                    <span className="block">
+                                      {n.author ?? "Staff"} · {formatWhen(n.written_at, org.timezone)}
+                                      {n.edited_at && ` · corrected ${formatWhen(n.edited_at, org.timezone)}${n.edited_by_name ? ` by ${n.edited_by_name}` : ""}`}
+                                    </span>
+                                  </div>
+                                ))}
+                              </Fragment>
+                            );
+                          })}
                           {Number(r.gst_amount) > 0 && <div className="flex justify-between text-muted-foreground"><span>GST</span><span>{money(r.gst_amount)}</span></div>}
                           {r.void_reason && <div className="text-red-700">Voided: {r.void_reason}</div>}
                         </div>
@@ -181,6 +207,7 @@ export default function InvoicesPage() {
               ))}
             </TableBody>
           </Table>
+          <Pager {...paged.pager} />
         </CardContent>
       </Card>
     </div>

@@ -22,6 +22,8 @@ const DEFAULT_ORG: Organisation = {
   clockInEarlyMinutes: 15,
   requireNoteOnEnd: true,
   requireMfa: false,
+  minuteInterval: 15,
+  showTypeTags: true,
 };
 
 export function mapOrganisation(r: any): Organisation {
@@ -52,6 +54,8 @@ export function mapOrganisation(r: any): Organisation {
     clockInEarlyMinutes: Number(r.clock_in_early_minutes ?? DEFAULT_ORG.clockInEarlyMinutes),
     requireNoteOnEnd: r.require_note_on_end ?? DEFAULT_ORG.requireNoteOnEnd,
     requireMfa: !!r.require_mfa,
+    minuteInterval: ([1, 5, 15].includes(Number(r.minute_interval)) ? Number(r.minute_interval) : 15) as 1 | 5 | 15,
+    showTypeTags: r.show_type_tags ?? true,
   };
 }
 
@@ -65,6 +69,7 @@ export function toOrganisationRow(d: Partial<Organisation>): Record<string, unkn
     defaultGeofenceRequired: "default_geofence_required", defaultGeofenceRadiusM: "default_geofence_radius_m",
     enforceGeofenceOnEnd: "enforce_geofence_on_end", clockInEarlyMinutes: "clock_in_early_minutes",
     requireNoteOnEnd: "require_note_on_end", requireMfa: "require_mfa",
+    minuteInterval: "minute_interval", showTypeTags: "show_type_tags",
   };
   const row: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(d)) if (map[k] && v !== undefined) row[map[k]] = v === "" ? null : v;

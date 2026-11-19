@@ -19,6 +19,7 @@ import ClientScheduleModal from "@/components/clients/client-schedule-modal";
 import { useClients } from "@/hooks/use-clients";
 import { useCaregivers } from "@/hooks/use-caregivers";
 import type { Client } from "@/lib/types";
+import { ageFrom } from "@/lib/age";
 
 export default function ClientsPage() {
   const { clients, loading, error, success, addClient, updateClient, deleteClient } = useClients();
@@ -48,8 +49,8 @@ export default function ClientsPage() {
           bValue = b.fullName.toLowerCase();
           break;
         case "age":
-          aValue = new Date().getFullYear() - new Date(a.dateOfBirth).getFullYear();
-          bValue = new Date().getFullYear() - new Date(b.dateOfBirth).getFullYear();
+          aValue = ageFrom(a.dateOfBirth) ?? -1;
+          bValue = ageFrom(b.dateOfBirth) ?? -1;
           break;
         case "assignedCaregiver":
           aValue = a.assignedCaregivers.join(', ').toLowerCase();
@@ -162,8 +163,8 @@ export default function ClientsPage() {
           <CardDescription>
             A list of all clients in the CareHub system.
           </CardDescription>
-          <div className="flex items-center space-x-2">
-            <div className="relative flex-1 max-w-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[12rem] flex-1 sm:max-w-sm">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search clients..."
@@ -180,7 +181,7 @@ export default function ClientsPage() {
             >
               <option value="name">Sort by Name</option>
               <option value="age">Sort by Age</option>
-              <option value="assignedCaregiver">Sort by Caregiver</option>
+              <option value="assignedCaregiver">Sort by Staff</option>
             </select>
             <Button
               variant="outline"

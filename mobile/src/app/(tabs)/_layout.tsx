@@ -4,9 +4,12 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSession } from '@/hooks/use-session';
 
-const icon = (glyph: string) => ({ color, focused }: { color: unknown; focused: boolean }) => (
-  <Text style={{ fontSize: focused ? 22 : 20, color: color as string, opacity: focused ? 1 : 0.75 }}>{glyph}</Text>
-);
+const icon = (glyph: string) => {
+  function TabIcon({ color, focused }: { color: unknown; focused: boolean }) {
+    return <Text style={{ fontSize: focused ? 22 : 20, color: color as string, opacity: focused ? 1 : 0.75 }}>{glyph}</Text>;
+  }
+  return TabIcon;
+};
 
 export default function TabsLayout() {
   const { org } = useSession();

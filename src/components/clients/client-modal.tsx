@@ -385,9 +385,9 @@ export default function ClientModal({
               name="assignedCaregivers"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Assigned Caregivers</FormLabel>
+                  <FormLabel>Assigned Staff</FormLabel>
                   <FormControl>
-                    <Input placeholder="Assigned caregivers" {...field} />
+                    <Input placeholder="Assigned staff" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -411,9 +411,9 @@ export default function ClientModal({
               name="preferredCaregivers"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Preferred Caregivers</FormLabel>
+                  <FormLabel>Preferred Staff</FormLabel>
                   <FormControl>
-                    <Input placeholder="Comma separated caregiver IDs" {...field} />
+                    <Input placeholder="Comma separated staff member IDs" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

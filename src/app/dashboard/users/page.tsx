@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import { Copy, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type Person = { id: string; email: string; first_name: string | null; last_name: string | null; phone: string | null; role: string; active: boolean };
 
-const ROLE_LABEL: Record<string, string> = { admin: "Administrator", manager: "Manager", office: "Office", caregiver: "Support worker" };
+const ROLE_LABEL: Record<string, string> = { admin: "Administrator", manager: "Manager", office: "Office", caregiver: "Staff" };
 
 export default function UsersPage() {
   const { isAdmin, user } = useAuth();
@@ -84,12 +85,13 @@ export default function UsersPage() {
 
   const f = (k: keyof typeof form) => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value }) });
 
+  const paged = usePaged(people, 20, people.length);
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Team</h1>
-          <p className="text-sm text-muted-foreground">Support workers sign in on the mobile app; office staff use this dashboard.</p>
+          <p className="text-sm text-muted-foreground">Staff sign in on the mobile app; office staff use this dashboard.</p>
         </div>
         <Button onClick={() => setOpen(true)}><UserPlus className="mr-1 h-4 w-4" />Add team member</Button>
       </div>
@@ -110,7 +112,7 @@ export default function UsersPage() {
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Phone</TableHead><TableHead>2FA</TableHead><TableHead className="text-right">Active</TableHead></TableRow></TableHeader>
             <TableBody>
-              {people.map((p) => (
+              {paged.rows.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{[p.first_name, p.last_name].filter(Boolean).join(" ") || "-"}</TableCell>
                   <TableCell>{p.email}</TableCell>
@@ -133,6 +135,7 @@ export default function UsersPage() {
               ))}
             </TableBody>
           </Table>
+          <Pager {...paged.pager} />
         </CardContent>
       </Card>
 
@@ -147,7 +150,7 @@ export default function UsersPage() {
             <div>
               <Label>Role</Label>
               <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="caregiver">Support worker (mobile app)</option>
+                <option value="caregiver">Staff (mobile app)</option>
                 <option value="office">Office (dashboard)</option>
                 {isAdmin && <option value="manager">Manager (dashboard)</option>}
                 {isAdmin && <option value="admin">Administrator</option>}

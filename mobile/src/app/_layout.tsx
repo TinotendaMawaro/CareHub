@@ -41,6 +41,7 @@ function Gate() {
         <Stack.Screen name="incident/new" options={{ title: 'Report an incident', presentation: 'modal' }} />
         <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
         <Stack.Screen name="onboarding" options={{ title: 'Onboarding' }} />
+        <Stack.Screen name="documents" options={{ title: 'My documents' }} />
       </Stack.Protected>
     </Stack>
   );

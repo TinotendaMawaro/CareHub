@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 /** Database errors are raised as "code: message"; split them so the UI can show the message and branch on the code. */
 export function parseRpcError(e: unknown): { code: string; message: string } {
   const raw = e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as any).message) : String(e);
-  const m = /^([a-z_]+): ([sS]*)$/.exec(raw);
+  const m = /^([a-z_]+): ([\s\S]*)$/.exec(raw);
   return m ? { code: m[1], message: m[2] } : { code: "error", message: raw };
 }
 
@@ -14,6 +14,37 @@ async function call<T = unknown>(fn: string, args: Record<string, unknown> = {})
 }
 
 export type Scope = "this" | "following" | "all";
+
+export type NdisCancelReason = "health" | "family" | "transport" | "other";
+export const NDIS_CANCEL_REASONS: { value: NdisCancelReason; label: string }[] = [
+  { value: "health", label: "No show due to health reasons" },
+  { value: "family", label: "No show due to family issues" },
+  { value: "transport", label: "No show due to unavailability of transport" },
+  { value: "other", label: "Other" },
+];
+
+export type ShiftTask = { label: string; mandatory?: boolean };
+/** Only the keys you pass are changed. */
+export type ShiftDetails = Partial<{
+  shift_type_id: string | null;
+  bonus_amount: number;
+  planned_break_minutes: number;
+  break_paid: boolean;
+  address: string | null;
+  dropoff_address: string | null;
+  notes: string | null;
+  tasks: ShiftTask[];
+  require_client_signature: boolean;
+  require_worker_signature: boolean;
+  confirmation_required: boolean;
+}>;
+
+export type TripKind = "to_shift" | "in_shift" | "return";
+export const TRIP_KINDS: { value: TripKind; label: string }[] = [
+  { value: "to_shift", label: "Travel to the shift" },
+  { value: "in_shift", label: "During the shift" },
+  { value: "return", label: "Return travel" },
+];
 
 export type ShiftBlock = {
   start_time: string; // "HH:MM" in the organisation's timezone
@@ -74,7 +105,20 @@ export const shiftRpc = {
   addClient: (shiftId: string, clientId: string, scope: Scope = "this") =>
     call<{ added: number; skipped: unknown[] }>("add_shift_client", { p_shift: shiftId, p_client: clientId, p_scope: scope }),
   removeClient: (shiftId: string, clientId: string) => call<void>("remove_shift_client", { p_shift: shiftId, p_client: clientId }),
-  cancel: (ids: string[], reason: string | null, pay: boolean) => call<number>("cancel_shifts", { p_ids: ids, p_reason: reason, p_pay: pay }),
+  /** by "client" = client is billed and staff are paid; "provider" = no charge, no pay. */
+  cancel: (ids: string[], reason: string | null, by: "client" | "provider", opts: { ndisReason?: NdisCancelReason | null; notify?: boolean } = {}) =>
+    call<number>("cancel_shifts", { p_ids: ids, p_reason: reason, p_pay: by === "client", p_by: by, p_ndis_reason: opts.ndisReason ?? null, p_notify: !!opts.notify }),
+  rebook: (shiftId: string) => call<void>("rebook_shift", { p_shift: shiftId }),
+  setDetails: (ids: string[], details: ShiftDetails) => call<number>("set_shift_details", { p_ids: ids, p: details }),
+  completeTask: (taskId: string, done: boolean) => call<void>("complete_shift_task", { p_task: taskId, p_done: done }),
+  /** Own start/end for one worker on the shift; pass nulls to follow the shift's times again. */
+  setWorkerTimes: (shiftId: string, caregiverId: string, start: string | null, end: string | null) =>
+    call<void>("set_worker_times", { p_shift: shiftId, p_caregiver: caregiverId, p_start: start, p_end: end }),
+  addCharge: (shiftId: string, clientIds: string[], item: string, quantity: number, description?: string | null, unitPrice?: number | null) =>
+    call<number>("add_shift_charge", { p_shift: shiftId, p_clients: clientIds, p_item: item, p_quantity: quantity, p_description: description ?? null, p_unit_price: unitPrice ?? null }),
+  removeCharge: (id: string) => call<void>("remove_shift_charge", { p_id: id }),
+  deleteTrip: (id: string) => call<void>("delete_trip", { p_id: id }),
+  editNote: (id: string, note: string) => call<void>("edit_shift_note", { p_id: id, p_note: note }),
   remove: (shiftId: string, scope: Scope = "this") => call<number>("delete_shifts", { p_shift: shiftId, p_scope: scope }),
   publish: (shiftId: string) => call<void>("publish_shift", { p_shift: shiftId }),
   approve: (shiftId: string, useScheduled = false) => call<void>("approve_shift", { p_shift: shiftId, p_use_scheduled: useScheduled }),
@@ -84,5 +128,10 @@ export const shiftRpc = {
   unapprove: (shiftId: string) => call<void>("unapprove_shift", { p_shift: shiftId }),
   adjust: (shiftId: string, caregiverId: string, clockIn: string | null, clockOut: string | null, breakMinutes = 0) =>
     call<void>("adjust_shift_worker", { p_shift: shiftId, p_caregiver: caregiverId, p_in: clockIn, p_out: clockOut, p_break: breakMinutes }),
+  /** New local times ("HH:MM"); an end at or before the start finishes next day. `date` moves a single shift. */
+  reschedule: (shiftId: string, start: string, end: string, scope: Scope = "this", date: string | null = null) =>
+    call<{ updated: number; skipped: { shift_id: string; date: string; reason: string }[] }>("reschedule_shift", {
+      p_shift: shiftId, p_start: start, p_end: end, p_scope: scope, p_date: date,
+    }),
   syncStatuses: () => call<number>("sync_shift_statuses"),
 };

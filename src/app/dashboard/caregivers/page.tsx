@@ -45,19 +45,19 @@ export default function CaregiversPage() {
         await updateCaregiver(editingCaregiver.id, data);
         toast({
           title: "Success",
-          description: "Caregiver updated successfully",
+          description: "Staff updated successfully",
         });
       } else {
         await addCaregiver(data);
         toast({
           title: "Success",
-          description: "Caregiver added successfully",
+          description: "Staff added successfully",
         });
       }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save caregiver",
+        description: "Failed to save staff member",
         variant: "destructive",
       });
     }
@@ -68,12 +68,12 @@ export default function CaregiversPage() {
       await deleteCaregiver(caregiverId);
       toast({
         title: "Success",
-        description: "Caregiver deleted successfully",
+        description: "Staff deleted successfully",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete caregiver",
+        description: "Failed to delete staff member",
         variant: "destructive",
       });
     }
@@ -84,18 +84,18 @@ export default function CaregiversPage() {
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold font-headline">Caregivers</h1>
-            <p className="text-muted-foreground">Manage your caregiver profiles and availability.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold font-headline">Staff</h1>
+            <p className="text-muted-foreground">Manage staff profiles and availability.</p>
         </div>
         <Button onClick={handleAddCaregiver} className="w-full sm:w-auto">
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Caregiver
+          <PlusCircle className="mr-2 h-4 w-4" /> Add Staff
         </Button>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Caregiver List</CardTitle>
+          <CardTitle>Staff List</CardTitle>
           <CardDescription>
-            A list of all caregivers in the CareHub system.
+            A list of all staff in the CareHub system.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -97,6 +97,17 @@ describe('security / RLS', () => {
     const pub = await as(db, null, async () => (await db.query('select * from public.organisation_public')).rows[0]);
     assert.deepEqual([pub.name, pub.brand_color, pub.logo_url], ['Bright Care', '#112233', 'https://x/logo.png']);
   });
+
+  test('2FA status: office sees who has it on, workers see nothing, unverified factors do not count', async () => {
+    await db.exec(`insert into auth.mfa_factors (user_id, status) values ('${U.w1}','verified'),('${U.w2}','unverified')`);
+    const office = await as(db, U.office, async () => (await db.query('select * from public.mfa_enabled_users() u')).rows.map((r) => r.u));
+    assert.deepEqual(office, [U.w1]);
+    const worker = await as(db, U.w1, async () => (await db.query('select * from public.mfa_enabled_users()')).rows);
+    assert.equal(worker.length, 0);
+    await rejects(as(db, null, () => db.query('select public.mfa_enabled_users()')), /permission denied/);
+    assert.equal((await one(`select require_mfa from public.organisation`)).require_mfa, false);
+    await db.exec(`delete from auth.mfa_factors`);
+  });
 });
 
 describe('creating shifts', () => {
@@ -617,9 +628,10 @@ describe('onboarding and terms', () => {
 
   test('publishing a new terms version asks everyone to accept again', async () => {
     const t = await one(`select id from public.legal_documents where kind = 'terms' and audience = 'staff'`);
-    await as(db, U.admin, () => db.query(`insert into public.legal_documents (kind, title, audience, version, body) values ('terms','Staff Terms of Use','staff',2,'v2 text')`));
-    const pend = await as(db, U.w1, async () => (await db.query('select version from public.pending_legal_documents()')).rows);
-    assert.deepEqual(pend.map((p) => p.version), [2]);
+    const next = (await one(`select max(version)::int + 1 v from public.legal_documents where kind = 'terms' and audience = 'staff'`)).v;
+    await as(db, U.admin, () => db.query(`insert into public.legal_documents (kind, title, audience, version, body) values ('terms','Staff Terms of Use','staff',$1,'new text')`, [next]));
+    const pend = await as(db, U.w1, async () => (await db.query(`select version from public.pending_legal_documents() where kind = 'terms'`)).rows);
+    assert.deepEqual(pend.map((p) => p.version), [next]);
     assert.equal((await rpc(U.w1, 'my_onboarding')).needs_terms, true);
     await as(db, U.office, async () => assert.equal((await db.query(`select count(*)::int n from public.legal_documents`)).rows[0].n > 0, true));
     assert.ok(t.id);
@@ -701,5 +713,424 @@ describe('create_shifts input validation', () => {
     await rejects(create({ ...base, client_ids: [CL[0]], worker_ids: [null] }), /id is empty/);
     await rejects(create({ ...base, client_ids: ['99999999-0000-0000-0000-000000000000'], worker_ids: [] }), /participants does not exist/);
     await rejects(create({ ...base, client_ids: [CL[0]], worker_ids: ['99999999-0000-0000-0000-000000000000'] }), /workers does not exist/);
+  });
+});
+
+describe('documents hub', () => {
+  const D = (n) => `40000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')}`;
+  const ids = (rows) => rows.map((r) => r.id).sort();
+  const seeAs = (user) => as(db, user, async () => ids((await db.query('select id from public.documents')).rows));
+  const W4 = '00000000-0000-0000-0000-0000000000b4', CG4 = '10000000-0000-0000-0000-0000000000b4';
+  const soon = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+
+  before(async () => {
+    await db.exec(`insert into auth.users (id, email) values ('${W4}','w4@x.test');
+      insert into public.profiles (id,email,first_name,last_name,role) values ('${W4}','w4@x.test','Wes','Four','caregiver');
+      insert into public.caregivers (id,user_id,name,email,worker_level) values ('${CG4}','${W4}','Wes Four','w4@x.test','level_2')`);
+    await as(db, U.office, () => db.query(`
+      insert into public.documents (id, title, category, caregiver_id, client_id, file_path, file_name, visible_to_staff, expiry_date) values
+        ('${D(1)}', 'Wendy screening check', 'NDIS Worker Screening', '${CG.w1}', null, 'office/1.pdf', '1.pdf', false, current_date - 1),
+        ('${D(2)}', 'Cara behaviour support plan', 'Behaviour Support Plan', null, '${CL[0]}', 'office/2.pdf', '2.pdf', true, current_date + 10),
+        ('${D(3)}', 'Cara NDIS plan (office only)', 'NDIS Plan', null, '${CL[0]}', 'office/3.pdf', '3.pdf', false, null),
+        ('${D(4)}', 'Dev risk assessment', 'Risk Assessment', null, '${CL[1]}', 'office/4.pdf', '4.pdf', true, null),
+        ('${D(5)}', 'Code of conduct', 'Policy', null, null, 'office/5.pdf', '5.pdf', true, null),
+        ('${D(6)}', 'Board minutes', 'Other', null, null, 'office/6.pdf', '6.pdf', false, null)`));
+    await db.exec(`insert into public.client_caregivers (client_id, caregiver_id) values ('${CL[0]}', '${CG.w1}')`);
+  });
+
+  test('office sees everything; workers see own, shared org docs and shared docs of participants they support', async () => {
+    assert.equal((await seeAs(U.office)).length, 6);
+    assert.deepEqual(await seeAs(U.w1), [D(1), D(2), D(5)].sort());
+    assert.deepEqual(await seeAs(W4), [D(5)]);
+    assert.deepEqual(await seeAs(null), []);
+  });
+
+  test('being rostered with a participant soon also shares their documents', async () => {
+    await create({ client_ids: [CL[1]], worker_ids: [CG4], date: soon, support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    assert.deepEqual(await seeAs(W4), [D(4), D(5)].sort());
+  });
+
+  test('worker uploads are forced to pending review, own-only, and cannot be edited or deleted', async () => {
+    await as(db, U.w1, () => db.query(`insert into public.documents (id, title, category, caregiver_id, file_path, file_name, status, visible_to_staff)
+      values ('${D(7)}', 'My first aid', 'First Aid', '${CG.w1}', '${U.w1}/fa.pdf', 'fa.pdf', 'approved', true)`));
+    const row = await one(`select status, visible_to_staff, uploaded_by from public.documents where id = '${D(7)}'`);
+    assert.deepEqual([row.status, row.visible_to_staff, row.uploaded_by], ['pending_review', false, U.w1]);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.documents (title, caregiver_id, file_path, file_name) values ('x', '${CG.w2}', '${U.w1}/x.pdf', 'x.pdf')`)), /row-level security|forbidden/);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.documents (title, caregiver_id, client_id, file_path, file_name) values ('x', '${CG.w1}', '${CL[0]}', '${U.w1}/y.pdf', 'y.pdf')`)), /row-level security|forbidden/);
+    await as(db, U.w1, () => db.query(`update public.documents set status = 'approved' where id = '${D(7)}'`));
+    await as(db, U.w1, () => db.query(`delete from public.documents where id = '${D(1)}'`));
+    assert.equal((await one(`select status from public.documents where id = '${D(7)}'`)).status, 'pending_review');
+    assert.equal((await one(`select count(*)::int n from public.documents where id = '${D(1)}'`)).n, 1);
+  });
+
+  test('office review stamps who approved it and when', async () => {
+    await as(db, U.office, () => db.query(`update public.documents set status = 'approved' where id = '${D(7)}'`));
+    const r = await one(`select status, reviewed_by, reviewed_at from public.documents where id = '${D(7)}'`);
+    assert.equal(r.status, 'approved');
+    assert.equal(r.reviewed_by, U.office);
+    assert.ok(r.reviewed_at);
+  });
+
+  test('files: workers upload to their own folder and can only read files of documents they can see', async () => {
+    await db.exec(`insert into storage.objects (bucket_id, name) values ('documents', 'office/2.pdf'), ('documents', 'office/3.pdf'), ('documents', 'office/4.pdf')`);
+    await as(db, U.w1, () => db.query(`insert into storage.objects (bucket_id, name) values ('documents', '${U.w1}/fa.pdf')`));
+    await rejects(as(db, U.w1, () => db.query(`insert into storage.objects (bucket_id, name) values ('documents', '${U.w2}/evil.pdf')`)), /row-level security/);
+    const files = await as(db, U.w1, async () => (await db.query(`select name from storage.objects where bucket_id = 'documents' order by name`)).rows.map((r) => r.name));
+    assert.deepEqual(files, [`${U.w1}/fa.pdf`, 'office/2.pdf']);
+  });
+
+  test('approving a renewal archives the older copy of the same kind; other kinds and other people are untouched', async () => {
+    await as(db, U.office, () => db.query(`
+      insert into public.documents (id, title, category, caregiver_id, file_path, file_name, expiry_date, created_at) values
+        ('${D(20)}', 'Old CPR', 'CPR', '${CG.w3}', 'office/20.pdf', '20.pdf', current_date - 5, now() - interval '2 days'),
+        ('${D(21)}', 'Degree', 'Qualification', '${CG.w3}', 'office/21.pdf', '21.pdf', null, now() - interval '2 days'),
+        ('${D(22)}', 'Other worker CPR', 'CPR', '${CG.w1}', 'office/22.pdf', '22.pdf', current_date - 5, now() - interval '2 days')`));
+    // Worker uploads the renewal: pending, so nothing is archived yet.
+    await as(db, U.w3, () => db.query(`insert into public.documents (id, title, category, caregiver_id, file_path, file_name, expiry_date)
+      values ('${D(23)}', 'New CPR', 'CPR', '${CG.w3}', '${U.w3}/cpr.pdf', 'cpr.pdf', current_date + 365)`));
+    assert.equal((await one(`select archived from public.documents where id = '${D(20)}'`)).archived, false);
+    await as(db, U.office, () => db.query(`update public.documents set status = 'approved' where id = '${D(23)}'`));
+    const a = Object.fromEntries((await q(`select id, archived from public.documents where id in ('${D(20)}','${D(21)}','${D(22)}','${D(23)}')`)).map((r) => [r.id, r.archived]));
+    assert.deepEqual([a[D(20)], a[D(21)], a[D(22)], a[D(23)]], [true, false, false, false]);
+    // A second qualification never replaces the first.
+    await as(db, U.office, () => db.query(`insert into public.documents (title, category, caregiver_id, file_path, file_name) values ('Cert IV', 'Qualification', '${CG.w3}', 'office/24.pdf', '24.pdf')`));
+    assert.equal((await one(`select archived from public.documents where id = '${D(21)}'`)).archived, false);
+    await as(db, U.office, () => db.query(`delete from public.documents where id in ('${D(20)}','${D(21)}','${D(22)}','${D(23)}') or file_path = 'office/24.pdf'`));
+  });
+
+  test('expiry summary counts expired, expiring soon and pending review within what the caller can see', async () => {
+    const office = await as(db, U.office, async () => (await db.query('select * from public.document_expiry_summary(30)')).rows[0]);
+    assert.deepEqual([Number(office.expired), Number(office.expiring), Number(office.pending_review)], [1, 1, 0]);
+    const w2 = await as(db, W4, async () => (await db.query('select * from public.document_expiry_summary(30)')).rows[0]);
+    assert.deepEqual([Number(w2.expired), Number(w2.expiring)], [0, 0]);
+  });
+});
+
+describe('rescheduling shifts', () => {
+  const times = async (id) => one(`select ${local('start_time')} st, ${local('end_time')} en from public.shifts where id = $1`, [id]);
+  const resched = (user, id, s, e, scope = 'this', date = null) => rpc(user, 'reschedule_shift', [id, s, e, scope, date]);
+
+  test('office changes the times of one shift; it is repriced for the new length', async () => {
+    const { shift_ids: [id] } = await create({ client_ids: [CL[2]], worker_ids: [CG.w3], date: '2032-03-01', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    const r = await resched(U.office, id, '10:00', '13:00');
+    assert.equal(r.updated, 1);
+    assert.deepEqual(await times(id), { st: '2032-03-01 10:00', en: '2032-03-01 13:00' });
+    assert.equal(Number((await one(`select sum(units) u from public.shift_segments where shift_id = $1`, [id])).u), 3);
+    assert.equal((await one(`select action from public.activity_log where shift_id = $1 order by id desc limit 1`, [id])).action, 'rescheduled');
+  });
+
+  test('a single shift can move to another day, and an earlier end time means overnight', async () => {
+    const { shift_ids: [id] } = await create({ client_ids: [CL[2]], worker_ids: [CG.w3], date: '2032-03-02', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    await resched(U.office, id, '22:00', '06:00', 'this', '2032-03-04');
+    assert.deepEqual(await times(id), { st: '2032-03-04 22:00', en: '2032-03-05 06:00' });
+  });
+
+  test('a series keeps each shift on its own day', async () => {
+    const r = await create({ client_ids: [CL[2]], worker_ids: [], date: '2032-04-05', support_family: 'community',
+      blocks: [{ start_time: '09:00', end_time: '10:00' }], repeat: { freq: 'weekly', weekdays: [1], count: 3 } });
+    assert.equal(r.shift_ids.length, 3);
+    const res = await resched(U.office, r.shift_ids[0], '08:00', '10:30', 'all');
+    assert.equal(res.updated, 3);
+    const rows = await q(`select ${local('start_time')} st, ${local('end_time')} en from public.shifts where id = any($1) order by start_time`, [r.shift_ids]);
+    assert.deepEqual(rows.map((x) => x.st), ['2032-04-05 08:00', '2032-04-12 08:00', '2032-04-19 08:00']);
+    assert.ok(rows.every((x) => x.en.endsWith('10:30')));
+    await rejects(resched(U.office, r.shift_ids[0], '08:00', '09:00', 'all', '2032-05-01'), /bad_scope/);
+  });
+
+  test('refuses to double-book an assigned worker, and skips started shifts', async () => {
+    const a = (await create({ client_ids: [CL[2]], worker_ids: [CG.w3], date: '2032-03-08', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] })).shift_ids[0];
+    await create({ client_ids: [CL[1]], worker_ids: [CG.w3], date: '2032-03-08', support_family: 'community', blocks: [{ start_time: '13:00', end_time: '15:00' }] });
+    await rejects(resched(U.office, a, '12:00', '14:00'), /worker_clash/);
+    assert.deepEqual(await times(a), { st: '2032-03-08 09:00', en: '2032-03-08 11:00' });
+    await db.query(`update public.shift_workers set clock_in_time = now() where shift_id = $1`, [a]);
+    await rejects(resched(U.office, a, '09:30', '11:00'), /started/);
+    await rejects(resched(U.office, a, 'nine', '11:00'), /bad_time/);
+  });
+
+  test('support workers cannot reschedule', async () => {
+    const { shift_ids: [id] } = await create({ client_ids: [CL[2]], worker_ids: [], date: '2032-03-10', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    await rejects(resched(U.w3, id, '10:00', '12:00'), /forbidden/);
+  });
+});
+
+describe('profile photos', () => {
+  const url = (uid, f = 'me.jpg') => `https://example.supabase.co/storage/v1/object/public/avatars/${uid}/${f}`;
+
+  test('a worker sets their own photo and it appears on their staff record', async () => {
+    await as(db, U.w2, () => db.query(`update public.profiles set avatar_url = $1 where id = $2`, [url(U.w2), U.w2]));
+    assert.equal((await one(`select profile_picture_url from public.caregivers where id = $1`, [CG.w2])).profile_picture_url, url(U.w2));
+  });
+
+  test('photos must come from our avatars bucket', async () => {
+    await rejects(as(db, U.w2, () => db.query(`update public.profiles set avatar_url = 'https://evil.example/pixel.gif' where id = $1`, [U.w2])), /avatar_url_check/);
+    await rejects(as(db, U.w2, () => db.query(`update public.profiles set avatar_url = $1 where id = $2`, [url(U.w2, '../x.jpg'), U.w2])), /avatar_url_check/);
+  });
+
+  test("workers cannot change someone else's photo; admins can", async () => {
+    await as(db, U.w2, () => db.query(`update public.profiles set avatar_url = $1 where id = $2`, [url(U.w3), U.w3]));
+    assert.equal((await one(`select avatar_url from public.profiles where id = $1`, [U.w3])).avatar_url, null);
+    await as(db, U.admin, () => db.query(`update public.profiles set avatar_url = $1 where id = $2`, [url(U.w3), U.w3]));
+    assert.equal((await one(`select profile_picture_url from public.caregivers where id = $1`, [CG.w3])).profile_picture_url, url(U.w3));
+  });
+
+  test('uploads: own folder only, and office may upload for anyone', async () => {
+    await as(db, U.w2, () => db.query(`insert into storage.objects (bucket_id, name) values ('avatars', '${U.w2}/a.jpg')`));
+    await rejects(as(db, U.w2, () => db.query(`insert into storage.objects (bucket_id, name) values ('avatars', '${U.w3}/b.jpg')`)), /row-level security/);
+    await as(db, U.office, () => db.query(`insert into storage.objects (bucket_id, name) values ('avatars', '${U.w3}/c.jpg')`));
+  });
+});
+
+describe('staff suggestions', () => {
+  test("the client's team comes first; people on leave or double-booked are left out", async () => {
+    await db.exec(`insert into public.client_caregivers (client_id, caregiver_id) values ('${CL[3]}', '${CG.w2}') on conflict do nothing`);
+    const { shift_ids: [target] } = await create({ client_ids: [CL[3]], worker_ids: [], date: '2033-01-03', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '12:00' }] });
+    // w3 is busy at the same time; w1 is on approved leave that day.
+    await create({ client_ids: [CL[1]], worker_ids: [CG.w3], date: '2033-01-03', support_family: 'community', blocks: [{ start_time: '10:00', end_time: '11:00' }] });
+    await db.exec(`insert into public.time_off_requests (caregiver_id, start_date, end_date, status) values ('${CG.w1}', '2033-01-02', '2033-01-04', 'Approved')`);
+    const rows = await as(db, U.office, async () => (await db.query(`select * from public.suggest_staff($1, 10)`, [target])).rows);
+    const ids = rows.map((r) => r.caregiver_id);
+    assert.equal(ids[0], CG.w2);
+    assert.equal(rows[0].on_team, true);
+    assert.ok(rows[0].reasons.some((r) => /team/.test(r)));
+    assert.ok(!ids.includes(CG.w1), 'on leave');
+    assert.ok(!ids.includes(CG.w3), 'double-booked');
+  });
+
+  test('support workers cannot see suggestions', async () => {
+    const { shift_ids: [id] } = await create({ client_ids: [CL[3]], worker_ids: [], date: '2033-01-10', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }] });
+    await rejects(as(db, U.w1, () => db.query(`select * from public.suggest_staff($1)`, [id])), /forbidden/);
+  });
+});
+
+describe('leave from the dashboard', () => {
+  test('office records approved leave for a worker; the decision is stamped', async () => {
+    const r = await as(db, U.office, async () => (await db.query(
+      `insert into public.time_off_requests (caregiver_id, start_date, end_date, status, leave_type, reason)
+       values ($1, '2034-02-01', '2034-02-03', 'Approved', 'Sick leave', 'Flu') returning id, approved_by, approved_at, leave_type`, [CG.w3])).rows[0]);
+    assert.equal(r.approved_by, U.office);
+    assert.ok(r.approved_at);
+    assert.equal(r.leave_type, 'Sick leave');
+    await as(db, U.office, () => db.query(`delete from public.time_off_requests where id = $1`, [r.id]));
+    assert.equal((await one(`select count(*)::int n from public.time_off_requests where id = $1`, [r.id])).n, 0);
+  });
+
+  test('workers request leave for themselves only, and cannot record it as approved', async () => {
+    await rejects(as(db, U.w3, () => db.query(`insert into public.time_off_requests (caregiver_id, start_date, end_date, status) values ($1, '2034-03-01', '2034-03-01', 'Approved')`, [CG.w3])), /row-level security/);
+    await rejects(as(db, U.w3, () => db.query(`insert into public.time_off_requests (caregiver_id, start_date, end_date) values ($1, '2034-03-01', '2034-03-01')`, [CG.w2])), /row-level security/);
+    await rejects(as(db, U.office, () => db.query(`insert into public.time_off_requests (caregiver_id, start_date, end_date, leave_type) values ($1, '2034-03-01', '2034-03-01', 'Holiday')`, [CG.w3])), /leave_type_check/);
+  });
+});
+
+describe('scheduler upgrades', () => {
+  const live = async (worker = CG.w1) => (await one(`insert into public.shifts (client_id, caregiver_id, start_time, end_time, support_family)
+    values ('${CL[0]}','${worker}', now() - interval '1 hour', now() + interval '2 hours','community') returning id`)).id;
+
+  test('office sets type, bonus, break, drop-off and tasks on many shifts at once; workers cannot', async () => {
+    const { shift_ids: ids } = await create({ client_ids: [CL[0]], worker_ids: [], date: '2035-01-08', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '12:00' }], repeat: { freq: 'daily', count: 2 } });
+    const type = await one(`select id from public.shift_types where name = 'Community access'`);
+    const n = await rpc(U.office, 'set_shift_details', [ids, { shift_type_id: type.id, bonus_amount: 25, planned_break_minutes: 30, break_paid: false, dropoff_address: 'Bondi Beach', tasks: [{ label: 'Give medication', mandatory: true }, { label: 'Tidy kitchen' }] }]);
+    assert.equal(n, 2);
+    const row = await one(`select shift_type_id, bonus_amount, planned_break_minutes, dropoff_address from public.shifts where id = $1`, [ids[1]]);
+    assert.equal(row.shift_type_id, type.id);
+    assert.equal(Number(row.bonus_amount), 25);
+    assert.equal(row.planned_break_minutes, 30);
+    assert.equal(row.dropoff_address, 'Bondi Beach');
+    assert.equal((await one(`select count(*)::int n from public.shift_tasks where shift_id = $1`, [ids[1]])).n, 2);
+    // replacing the list removes tasks that are no longer there
+    await rpc(U.office, 'set_shift_details', [[ids[0]], { tasks: [{ label: 'Give medication', mandatory: false }] }]);
+    const t = await q(`select label, mandatory from public.shift_tasks where shift_id = $1`, [ids[0]]);
+    assert.deepEqual(t.map((r) => [r.label, r.mandatory]), [['Give medication', false]]);
+    await rejects(rpc(U.office, 'set_shift_details', [ids, { bonus_amount: -5 }]), /invalid/);
+    await rejects(rpc(U.w1, 'set_shift_details', [ids, { bonus_amount: 5 }]), /forbidden/);
+  });
+
+  test('mandatory tasks block ending the shift until the worker ticks them off', async () => {
+    const s = await live(CG.w1);
+    await rpc(U.office, 'set_shift_details', [[s], { tasks: [{ label: 'Check blood sugar', mandatory: true }, { label: 'Optional walk' }] }]);
+    const task = await one(`select id from public.shift_tasks where shift_id = $1 and mandatory`, [s]);
+    await rejects(rpc(U.w1, 'complete_shift_task', [task.id, true]), /not_started/);
+    await rpc(U.w1, 'start_shift', [s, SYD.lat, SYD.lng]);
+    await rejects(rpc(U.w2, 'complete_shift_task', [task.id, true]), /not_assigned/);
+    await as(db, U.w1, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${CG.w1}','All good')`, [s]));
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /tasks_required: .*Check blood sugar/);
+    await rpc(U.w1, 'complete_shift_task', [task.id, true]);
+    const tasks = await as(db, U.w1, async () => (await db.query(`select label, done_at from public.shift_tasks where shift_id = $1`, [s])).rows);
+    assert.equal(tasks.length, 2, 'workers see the tasks on their shift');
+    await rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]);
+  });
+
+  test('cancel by client bills and pays; cancel by us does neither; staff are notified; rebook restores', async () => {
+    const { shift_ids: [a, b] } = await create({ client_ids: [CL[1]], worker_ids: [CG.w2], date: '2035-02-05', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }, { start_time: '13:00', end_time: '14:00' }] });
+    const before = (await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.w2])).n;
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[a], 'Unwell', null, 'client', 'health', true]), 1);
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[b], 'Staff shortage', null, 'provider', null, false]), 1);
+    const ra = await one(`select status, cancel_pay, cancelled_by, cancel_ndis_reason from public.shifts where id = $1`, [a]);
+    const rb = await one(`select cancel_pay, cancelled_by from public.shifts where id = $1`, [b]);
+    assert.deepEqual([ra.status, ra.cancel_pay, ra.cancelled_by, ra.cancel_ndis_reason], ['Cancelled', true, 'client', 'health']);
+    assert.deepEqual([rb.cancel_pay, rb.cancelled_by], [false, 'provider']);
+    assert.equal((await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.w2])).n, before + 1, 'only the notify=true cancel sends a message');
+    await rejects(rpc(U.office, 'cancel_shifts', [[a], null, null, 'nobody']), /invalid/);
+    // the old three-argument call still works
+    const { shift_ids: [c] } = await create({ client_ids: [CL[1]], worker_ids: [], date: '2035-02-06', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }] });
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[c], 'old app', true]), 1);
+    assert.equal((await one(`select cancelled_by from public.shifts where id = $1`, [c])).cancelled_by, 'client');
+
+    await rpc(U.office, 'rebook_shift', [a]);
+    const back = await one(`select status, cancel_reason, cancelled_by, cancel_pay from public.shifts where id = $1`, [a]);
+    assert.deepEqual([back.status, back.cancel_reason, back.cancelled_by, back.cancel_pay], ['Scheduled', null, null, false]);
+    await rejects(rpc(U.office, 'rebook_shift', [a]), /only a cancelled shift/);
+    await rejects(rpc(U.w2, 'rebook_shift', [b]), /forbidden/);
+    const log = await q(`select action from public.activity_log where shift_id = $1 order by id`, [a]);
+    assert.deepEqual(log.map((r) => r.action).filter((x) => /cancel|rebook/.test(x)), ['shift_cancelled', 'shift_rebooked']);
+  });
+
+  test('a drop-off address skips the end-of-shift location check', async () => {
+    await db.query(`update public.organisation set enforce_geofence_on_end = true`);
+    try {
+      const s = await live(CG.w3);
+      await rpc(U.w3, 'start_shift', [s, SYD.lat, SYD.lng]);
+      await as(db, U.w3, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${CG.w3}','Dropped at the shops')`, [s]));
+      await rejects(rpc(U.w3, 'end_shift', [s, SYD.lat + 0.05, SYD.lng, 0]), /outside_geofence/);
+      await rpc(U.office, 'set_shift_details', [[s], { dropoff_address: 'Westfield Bondi Junction' }]);
+      await rpc(U.w3, 'end_shift', [s, SYD.lat + 0.05, SYD.lng, 0]);
+    } finally {
+      await db.query(`update public.organisation set enforce_geofence_on_end = false`);
+    }
+  });
+
+  test('shift types: everyone can read them, only the office can change them', async () => {
+    const rows = await as(db, U.w1, async () => (await db.query(`select name from public.shift_types order by sort`)).rows);
+    assert.ok(rows.length >= 5 && rows[0].name === 'Standard');
+    await rejects(as(db, U.w1, () => db.query(`insert into public.shift_types (name, colour) values ('Mine', '#000000')`)), /row-level security/);
+    await as(db, U.office, () => db.query(`insert into public.shift_types (name, colour) values ('Respite', '#123ABC')`));
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_types (name, colour) values ('Bad', 'red')`)), /colour_check/);
+  });
+});
+
+describe('shift extras', () => {
+  const live = async (worker = CG.w1, client = CL[0]) => (await one(`insert into public.shifts (client_id, caregiver_id, start_time, end_time, support_family)
+    values ('${client}','${worker}', now() - interval '1 hour', now() + interval '2 hours','community') returning id`)).id;
+  const note = (user, cg, s, text) => as(db, user, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${cg}',$2) returning id`, [s, text]));
+  const SIG = 'M10 10 L40 40 L80 20';
+
+  test('signatures: required sign-offs block ending until captured; only the worker on shift can sign', async () => {
+    const s = await live(CG.w1);
+    await rpc(U.office, 'set_shift_details', [[s], { require_client_signature: true, require_worker_signature: true }]);
+    await rejects(rpc(U.w1, 'sign_shift', [s, 'client', 'Pat', SIG, 300, 150]), /not_started/);
+    await rpc(U.w1, 'start_shift', [s, SYD.lat, SYD.lng]);
+    await note(U.w1, CG.w1, s, 'Fine');
+    await rejects(rpc(U.w2, 'sign_shift', [s, 'client', 'Pat', SIG, 300, 150]), /not_assigned/);
+    await rejects(rpc(U.w1, 'sign_shift', [s, 'client', 'Pat', '<script>', 300, 150]), /strokes_check|check constraint/);
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /signature_required: ask the client/);
+    await rpc(U.w1, 'sign_shift', [s, 'client', 'Pat Client', SIG, 300, 150]);
+    await rpc(U.w1, 'sign_shift', [s, 'client', 'Pat Client', SIG + ' L90 90', 300, 150]); // re-signing replaces
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /signature_required: sign the shift yourself/);
+    await rpc(U.w1, 'sign_shift', [s, 'worker', 'Wendy', SIG, 300, 150]);
+    await rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]);
+    assert.equal((await one(`select count(*)::int n from public.shift_signatures where shift_id = $1`, [s])).n, 2);
+    const seen = await as(db, U.w2, async () => (await db.query(`select * from public.shift_signatures where shift_id = $1`, [s])).rows);
+    assert.equal(seen.length, 0, 'other workers cannot see the signatures');
+  });
+
+  test('trips: workers log trips on their own shift (km or odometer); the office sees them', async () => {
+    const s = await live(CG.w2, CL[0]);
+    await rpc(U.w2, 'log_trip', [s, 'to_shift', 12.4, 'Own car', null, null, null]);
+    await rpc(U.w2, 'log_trip', [s, 'in_shift', null, null, 'Shops', 10500, 10508.5]);
+    await rejects(rpc(U.w2, 'log_trip', [s, 'in_shift', null, null, null, 100, 90]), /odometer/);
+    await rejects(rpc(U.w2, 'log_trip', [s, 'later', 5]), /choose when/);
+    await rejects(rpc(U.w3, 'log_trip', [s, 'return', 5]), /not_assigned/);
+    const trips = await q(`select trip_kind, distance from public.mileage where shift_id = $1 order by created_at`, [s]);
+    assert.deepEqual(trips.map((t) => [t.trip_kind, Number(t.distance)]), [['to_shift', 12.4], ['in_shift', 8.5]]);
+    const mine = await one(`select id from public.mileage where shift_id = $1 and trip_kind = 'to_shift'`, [s]);
+    await rejects(rpc(U.w3, 'delete_trip', [mine.id]), /forbidden/);
+    await rpc(U.w2, 'delete_trip', [mine.id]);
+    assert.equal((await one(`select count(*)::int n from public.mileage where shift_id = $1`, [s])).n, 1);
+  });
+
+  test('confirmation: assigned staff start pending, confirm or decline; declining frees the slot and tells the office', async () => {
+    const { shift_ids: [a] } = await create({ client_ids: [CL[2]], worker_ids: [CG.w1], date: '2036-01-07', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '11:00' }] });
+    await rpc(U.office, 'set_shift_details', [[a], { confirmation_required: true }]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [a])).confirmation, 'pending');
+    const ask = await one(`select title from public.notifications where user_id = $1 order by timestamp desc limit 1`, [U.w1]);
+    assert.equal(ask.title, 'Please confirm a shift');
+    await rpc(U.w1, 'respond_to_shift', [a, true, null]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [a])).confirmation, 'confirmed');
+    await rejects(rpc(U.w1, 'respond_to_shift', [a, false, null]), /not_pending/);
+
+    // newly assigned staff on a confirmation shift start pending; declining removes them
+    await db.query(`insert into public.shift_workers (shift_id, caregiver_id, role) values ($1, $2, 'support')`, [a, CG.w2]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w2])).confirmation, 'pending');
+    const officeBefore = (await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.office])).n;
+    await rpc(U.w2, 'respond_to_shift', [a, false, 'Away that day']);
+    assert.equal((await one(`select count(*)::int n from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w2])).n, 0);
+    assert.equal((await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.office])).n, officeBefore + 1);
+    const log = await one(`select reason from public.activity_log where shift_id = $1 and action = 'shift_declined'`, [a]);
+    assert.equal(log.reason, 'Away that day');
+    // switching it off clears outstanding requests
+    await db.query(`insert into public.shift_workers (shift_id, caregiver_id, role) values ($1, $2, 'support')`, [a, CG.w3]);
+    await rpc(U.office, 'set_shift_details', [[a], { confirmation_required: false }]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [a, CG.w3])).confirmation, null);
+    // starting a pending shift confirms it
+    const s = await live(CG.w3, CL[1]);
+    await rpc(U.office, 'set_shift_details', [[s], { confirmation_required: true }]);
+    await rpc(U.w3, 'start_shift', [s, SYD.lat, SYD.lng]);
+    assert.equal((await one(`select confirmation from public.shift_workers where shift_id = $1`, [s])).confirmation, 'confirmed');
+  });
+
+  test('per-staff times: must sit inside the shift; pay follows them', async () => {
+    const { shift_ids: [g] } = await create({ client_ids: [CL[0], CL[1]], worker_ids: [CG.w1, CG.w2], ratio: '2:2', date: '2036-02-04', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '15:00' }] });
+    const sh = await one(`select start_time, end_time from public.shifts where id = $1`, [g]);
+    const start = new Date(sh.start_time), end = new Date(sh.end_time);
+    const h = (n) => new Date(start.getTime() + n * 3_600_000).toISOString();
+    await rejects(rpc(U.office, 'set_worker_times', [g, CG.w2, h(-1), h(2)]), /inside the shift/);
+    await rejects(rpc(U.w2, 'set_worker_times', [g, CG.w2, h(0), h(2)]), /forbidden/);
+    await rpc(U.office, 'set_worker_times', [g, CG.w2, h(0), h(3)]);
+    const full = Number(await rpc(U.office, 'compute_worker_pay', [g, CG.w1, null]));
+    const part = Number(await rpc(U.office, 'compute_worker_pay', [g, CG.w2, null]));
+    assert.ok(part > 0 && Math.abs(part * 2 - full) < 0.05, `half the hours, half the pay (${part} vs ${full})`);
+    // setting the shift's own times clears them
+    await rpc(U.office, 'set_worker_times', [g, CG.w2, start.toISOString(), end.toISOString()]);
+    assert.equal((await one(`select planned_start from public.shift_workers where shift_id = $1 and caregiver_id = $2`, [g, CG.w2])).planned_start, null);
+  });
+
+  test('extra charges are billed on the invoice; progress-note corrections show until the invoice is sent', async () => {
+    const item = (await one(`select item_number from public.support_items order by item_number limit 1`)).item_number;
+    const { shift_ids: [s] } = await create({ client_ids: [CL[3]], worker_ids: [CG.w3], date: '2036-03-04', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }] });
+    await rejects(rpc(U.office, 'add_shift_charge', [s, [CL[0]], item, 1]), /every client/);
+    await rejects(rpc(U.w3, 'add_shift_charge', [s, [CL[3]], item, 1]), /forbidden/);
+    assert.equal(await rpc(U.office, 'add_shift_charge', [s, [CL[3]], item, 2, 'Equipment hire', 15]), 1);
+    const { rows: [{ id: noteId }] } = await as(db, U.office, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,$2,$3,'Went to the park') returning id`, [s, CL[3], CG.w3]));
+    await rpc(U.office, 'approve_shift', [s, true]);
+    const [inv] = await rpc(U.office, 'generate_invoices', ['2036-03-01', '2036-03-31', [CL[3]]]);
+    const lines = await q(`select description, amount from public.invoice_lines where invoice_id = $1 order by description`, [inv]);
+    const extra = lines.find((l) => /additional charge/.test(l.description));
+    assert.ok(extra && Number(extra.amount) === 30 && /Equipment hire/.test(extra.description), 'the charge is its own line');
+    await rejects(rpc(U.office, 'remove_shift_charge', [(await one(`select id from public.shift_charges where shift_id = $1`, [s])).id]), /invoiced/);
+
+    // a correction made while the invoice is a draft is what the invoice shows
+    await rpc(U.office, 'edit_shift_note', [noteId, 'Went to the park and had lunch']);
+    const shown = await as(db, U.office, async () => (await db.query(`select * from public.invoice_progress_notes($1)`, [inv])).rows);
+    assert.equal(shown[0].note, 'Went to the park and had lunch');
+    assert.ok(shown[0].edited_at);
+    assert.equal((await one(`select original_note from public.shift_notes where id = $1`, [noteId])).original_note, 'Went to the park');
+    await rejects(rpc(U.w1, 'edit_shift_note', [noteId, 'x']), /forbidden/);
+    await rpc(U.office, 'set_invoice_status', [inv, 'approved']);
+    await rpc(U.office, 'set_invoice_status', [inv, 'sent']);
+    await rejects(rpc(U.office, 'edit_shift_note', [noteId, 'Changed after sending']), /invoice_sent/);
+
+    // voiding releases the charge for the next invoice
+    await rpc(U.office, 'set_invoice_status', [inv, 'approved']);
+    await rpc(U.office, 'void_invoice', [inv, 'Wrong period']);
+    assert.equal((await one(`select invoice_line_id from public.shift_charges where shift_id = $1`, [s])).invoice_line_id, null);
+  });
+
+  test('attachments: staff on the shift can see the list; others and workers cannot add', async () => {
+    const s = await live(CG.w1, CL[0]);
+    await as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/a.pdf', 'Care plan.pdf', 1000, 'application/pdf')`, [s]));
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1, 'other/a.pdf', 'x.pdf', 10, 'application/pdf')`, [s])), /check/);
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/big.pdf', 'big.pdf', 20000000, 'application/pdf')`, [s])), /check/);
+    assert.equal((await as(db, U.w1, async () => (await db.query(`select * from public.shift_attachments where shift_id = $1`, [s])).rows)).length, 1);
+    assert.equal((await as(db, U.w2, async () => (await db.query(`select * from public.shift_attachments where shift_id = $1`, [s])).rows)).length, 0);
+    await rejects(as(db, U.w1, () => db.query(`insert into public.shift_attachments (shift_id, path, name, size_bytes, mime) values ($1::uuid, $1::text || '/b.pdf', 'b.pdf', 10, 'application/pdf')`, [s])), /row-level security/);
   });
 });

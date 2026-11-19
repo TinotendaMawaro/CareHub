@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lets a production test build (NEXT_DIST_DIR=.next-test) run without clobbering a
+  // running `next dev`, which otherwise starts serving 404s for its chunks.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   experimental: {
     turbopack: {
       // Force Turbopack for dev to avoid slow webpack compilation

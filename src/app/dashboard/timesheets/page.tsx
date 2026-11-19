@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Pager, usePaged } from "@/components/ui/pager";
 import Link from "next/link";
 import { Check, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ export default function TimesheetsPage() {
     await run(id, "Timesheet sent back", () => reject(id, reason));
   }
 
+  const paged = usePaged(rows, 20, rows.length);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -83,9 +85,9 @@ export default function TimesheetsPage() {
             Pay is calculated from approved shifts. Approve shifts first, or approve a timesheet and its completed shifts together.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Select value={periodId} onValueChange={setPeriodId}>
-            <SelectTrigger className="w-64"><SelectValue placeholder="Pay period" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Pay period" /></SelectTrigger>
             <SelectContent>
               {periods.map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.periodStart} to {p.periodEnd}</SelectItem>
@@ -127,7 +129,7 @@ export default function TimesheetsPage() {
                   No timesheets for this period yet. Use "Create for all workers".
                 </TableCell></TableRow>
               )}
-              {rows.map((t) => {
+              {paged.rows.map((t) => {
                 const tot = totals[t.id];
                 return (
                   <TableRow key={t.id}>
@@ -164,6 +166,7 @@ export default function TimesheetsPage() {
               })}
             </TableBody>
           </Table>
+          <Pager {...paged.pager} />
         </CardContent>
       </Card>
     </div>
