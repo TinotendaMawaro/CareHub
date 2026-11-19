@@ -98,13 +98,13 @@ export default function MyShifts() {
           const mine = s.shift_workers.find((w) => w.caregiver_id === me?.caregiverId);
           return (
             <Card style={{ marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: colors.text }}>
                   {formatDay(s.start_time, org.timezone)} {formatTime(s.start_time, org.timezone)}-{formatTime(s.end_time, org.timezone)}
                 </Text>
                 {'open' in section ? <Pill text="Open" tone="brand" /> : statusPill(s, mine)}
               </View>
-              <Text style={{ color: colors.text }}>{clientNames(s) || 'Client'}</Text>
+              <Text style={{ color: colors.text }} numberOfLines={2}>{clientNames(s) || 'Client'}</Text>
               <Muted>
                 {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} clients` : ''}
               </Muted>

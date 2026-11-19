@@ -100,19 +100,19 @@ export default function ApprovalsPage() {
             Approve finished shifts so they flow to timesheets (pay) and invoices (billing). Approved shifts are locked.
           </p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <div><Label className="text-xs">From</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         </div>
       </div>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <div>
             <CardTitle>Shifts to approve</CardTitle>
             <CardDescription>{rows.length} waiting, {ready.length} ready</CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setPicked(allReadyPicked ? new Set() : new Set(ready.map((r) => r.id)))}>
               {allReadyPicked ? "Clear selection" : "Select all ready"}
             </Button>

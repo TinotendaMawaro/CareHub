@@ -58,16 +58,16 @@ export default function CaregiverProfilePage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Link href="/dashboard/caregivers">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div>
-            <h1 className="text-2xl font-semibold font-headline">{caregiver.name}</h1>
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-semibold font-headline">{caregiver.name}</h1>
             <p className="text-sm text-muted-foreground">Staff profile</p>
           </div>
         </div>

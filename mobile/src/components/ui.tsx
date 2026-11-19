@@ -41,7 +41,7 @@ export function Backdrop() {
   const { org } = useSession();
   const b = org.brandColor;
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
       <LinearGradient colors={[`${b}33`, '#f4f7fb', '#eef3fa']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
       <View style={{ position: 'absolute', top: -80, right: -60, width: 260, height: 260, borderRadius: 130, backgroundColor: b, opacity: 0.28 }} />
       <View style={{ position: 'absolute', top: 260, left: -110, width: 280, height: 280, borderRadius: 140, backgroundColor: shade(b, 0.7), opacity: 0.16 }} />

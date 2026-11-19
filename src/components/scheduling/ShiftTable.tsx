@@ -88,6 +88,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { findClashes, findWorkerSuggestions, publishShift, sendSmsToWorker, type WorkerSuggestion } from "@/lib/shiftApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { downloadCsv } from "@/lib/csv";
+import { cn } from "@/lib/utils";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -466,8 +468,7 @@ export default function ShiftTable({
   const handleExportCsv = () => {
     const headers = visibleColumns
       .filter((c) => c.key !== "select" && c.key !== "actions")
-      .map((c) => c.label)
-      .join(",");
+      .map((c) => c.label);
     const rows = filtered.map((s) =>
       visibleColumns
         .filter((c) => c.key !== "select" && c.key !== "actions")
@@ -503,16 +504,8 @@ export default function ShiftTable({
               return "";
           }
         })
-        .join(",")
     );
-    const csv = [headers, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `shifts-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`shifts-${format(new Date(), "yyyy-MM-dd")}.csv`, [headers, ...rows]);
   };
 
   const calendarEvents = filtered.map((s) => ({
@@ -926,8 +919,54 @@ export default function ShiftTable({
         </div>
       )}
 
+      {viewMode === "list" && (
+        <div className="space-y-2 md:hidden" data-testid="shift-cards">
+          {pageData.length === 0 ? (
+            <p className="rounded-md border p-8 text-center text-sm text-muted-foreground">No shifts found.</p>
+          ) : (
+            pageData.map((shift, i) => {
+              const newDay = i === 0 || pageData[i - 1].date !== shift.date;
+              return (
+                <React.Fragment key={shift.id}>
+                  {newDay && (
+                    <p className="px-1 pt-2 text-sm font-semibold">{format(parseISO(shift.date), "EEEE d MMMM")}</p>
+                  )}
+                  <div className={cn("flex items-start gap-3 rounded-lg border bg-card p-3 shadow-sm", statusRowClass(shift.status))}>
+                    <Checkbox
+                      className="mt-1"
+                      checked={selectedIds.has(shift.id)}
+                      onCheckedChange={() => toggleSelect(shift.id)}
+                      aria-label={`Select shift ${shift.shiftId}`}
+                    />
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onEdit?.(shift)}>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold tabular-nums">
+                          {formatTime(shift.startTime)}-{formatTime(shift.endTime)}
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">{shiftHours(shift).toFixed(1)} h</span>
+                        </span>
+                        <span className="shrink-0">{statusBadge(shift.status)}</span>
+                      </div>
+                      <p className="mt-1 break-words text-sm">{shift.clientName ?? "No client"}</p>
+                      <p className={cn("break-words text-sm", shift.caregiverId ? "text-muted-foreground" : "font-medium text-amber-700")}>
+                        {shift.caregiverName ?? "Unassigned"}
+                      </p>
+                      {(shift.isSleepover || shift.supportFamily) && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {shift.isSleepover && <Badge variant="outline" className="text-xs">Sleep</Badge>}
+                          {shift.supportFamily && <Badge variant="outline" className="text-xs">Indirect</Badge>}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </React.Fragment>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {viewMode === "list" ? (
-        <div ref={printRef} className="rounded-md border">
+        <div ref={printRef} className="hidden rounded-md border md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1070,16 +1109,16 @@ export default function ShiftTable({
         </div>
       )}
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-3">
-          <span>
+          <span className="tabular-nums">
             Showing {showingFrom} to {showingTo} of {totalFiltered}
           </span>
           <Select
             value={String(pageSize)}
             onValueChange={(v) => setPageSize(Number(v) as PageSize)}
           >
-            <SelectTrigger className="h-8 w-20">
+            <SelectTrigger className="h-8 w-[6.75rem] whitespace-nowrap" aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

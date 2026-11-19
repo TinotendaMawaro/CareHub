@@ -199,10 +199,10 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
 
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[920px] table-fixed sm:min-w-[1080px] border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-card">
               <tr>
-                <th className="w-56 border-b border-r px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mode === "staff" ? "Staff" : "Client"}</th>
+                <th className="sticky left-0 z-20 w-36 border-b border-r bg-card px-3 py-2 text-left sm:w-56 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mode === "staff" ? "Staff" : "Client"}</th>
                 {days.map((d) => {
                   const l = dayLabel(d);
                   const isToday = d === today;
@@ -225,12 +225,12 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                 const h = rowHours(row.id);
                 return (
                   <tr key={row.id} className={cn("group/row", isUnassigned && "bg-amber-50/50 dark:bg-amber-950/10")}>
-                    <td className="border-b border-r px-3 py-2 align-top">
+                    <td className={cn("sticky left-0 z-[5] border-b border-r px-2 py-2 align-top sm:px-3", isUnassigned ? "bg-amber-50 dark:bg-amber-950" : "bg-card")}>
                       <div className="flex min-w-0 items-center gap-2">
                         {isUnassigned ? (
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700"><UserX className="h-4 w-4" /></span>
+                          <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 sm:flex"><UserX className="h-4 w-4" /></span>
                         ) : (
-                          <Avatar className="h-8 w-8 shrink-0">
+                          <Avatar className="hidden h-8 w-8 shrink-0 sm:flex">
                             {row.avatar && <AvatarImage src={row.avatar} alt="" className="object-cover" />}
                             <AvatarFallback className="text-xs">{initials(row.name)}</AvatarFallback>
                           </Avatar>
@@ -269,7 +269,7 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                                   onClick={() => setOpenId(s.id)}
                                   title={`${formatTime(s.startTime, tz)}-${formatTime(s.endTime, tz)} · ${chipLabel(s, row.id)} · ${s.status}`}
                                   className={cn(
-                                    "group/chip flex w-full items-start gap-1 rounded-md border border-l-4 px-1.5 py-1 text-left text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow-md",
+                                    "group/chip relative flex w-full items-start gap-1 rounded-md border border-l-4 px-1.5 py-1 text-left text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow-md",
                                     STATUS_STYLE[s.status] ?? STATUS_STYLE.Scheduled,
                                     isUnassigned && "border-l-amber-500 bg-amber-50 text-amber-950",
                                     canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
@@ -277,9 +277,9 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                                     busyId === s.id && "animate-pulse",
                                   )}
                                 >
-                                  {canDrag && <GripVertical className="mt-0.5 h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/chip:opacity-50" />}
+                                  {canDrag && <GripVertical className="absolute right-0.5 top-1 h-3 w-3 opacity-0 transition-opacity group-hover/chip:opacity-50" />}
                                   <span className="min-w-0 flex-1">
-                                    <span className="flex items-center gap-1 font-semibold tabular-nums">
+                                    <span className="flex flex-wrap items-center gap-x-1 font-semibold tabular-nums">
                                       {formatTime(s.startTime, tz)}-{formatTime(s.endTime, tz)}
                                       {s.isSleepover && <Moon className="h-3 w-3" aria-label="Sleepover" />}
                                     </span>
@@ -315,7 +315,7 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
             {!loading && (
               <tfoot>
                 <tr className="bg-muted/40 text-xs">
-                  <td className="border-r px-3 py-2 font-semibold">This week</td>
+                  <td className="sticky left-0 z-[5] border-r bg-muted px-2 py-2 font-semibold sm:px-3">This week</td>
                   {days.map((d) => {
                     const ds = weekShifts.filter((s) => s.date === d && s.status !== "Cancelled");
                     const open = ds.filter((s) => workersOf(s).length < (s.requiredWorkers ?? 1)).length;

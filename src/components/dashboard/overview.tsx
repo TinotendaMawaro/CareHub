@@ -110,7 +110,7 @@ export function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex flex-col gap-4 md:gap-6">
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-3 md:gap-8 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 2xl:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i}>
               <CardHeader className="space-y-1 pb-2">
@@ -137,7 +137,7 @@ export function DashboardOverview() {
     <>
       <div className="flex flex-col gap-4 md:gap-6">
         {/* Real-Time Cards */}
-        <div data-tour="stats" className="grid gap-4 grid-cols-2 md:grid-cols-3 md:gap-8 lg:grid-cols-6">
+        <div data-tour="stats" className="grid grid-cols-2 gap-4 sm:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             title="Active Shifts"
             value={metrics.activeShifts.length.toString()}

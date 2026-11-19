@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import { ageFrom } from "@/lib/age";
 import { Pager, usePaged } from "@/components/ui/pager";
 import Link from "next/link";
 import {
@@ -71,7 +72,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onViewDetails, 
                 </Avatar>
               </TableCell>
               <TableCell className="font-medium">{`${client.firstName} ${client.lastName}`}</TableCell>
-              <TableCell>{new Date().getFullYear() - new Date(client.dateOfBirth).getFullYear()}</TableCell>
+              <TableCell className="tabular-nums">{ageFrom(client.dateOfBirth) ?? <span className="text-muted-foreground">—</span>}</TableCell>
               <TableCell className="hidden md:table-cell">
                 {client.email}
               </TableCell>

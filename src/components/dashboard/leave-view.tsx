@@ -146,9 +146,9 @@ export function LeaveView() {
               <option value="all">All types</option>{LEAVE_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
             <div className="flex items-center gap-1 text-sm">
-              <Input type="date" className="h-9 w-[150px]" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="From" />
+              <Input type="date" className="h-9 w-[9.5rem] min-w-0 px-2" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="From" />
               <span className="text-muted-foreground">to</span>
-              <Input type="date" className="h-9 w-[150px]" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label="To" />
+              <Input type="date" className="h-9 w-[9.5rem] min-w-0 px-2" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label="To" />
             </div>
             <Button className="ml-auto" size="sm" onClick={() => setAdding(true)}><Plus className="mr-1 h-4 w-4" />Add leave</Button>
           </div>
