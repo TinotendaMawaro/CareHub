@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, SectionList, Text, View } from 'react-native';
-import { Button, Card, Empty, Muted, Pill, Screen, TAB_BAR_SPACE, colors } from '@/components/ui';
+import { Button, Card, Empty, Muted, Pill, Screen, TAB_BAR_SPACE, TypeTag, colors } from '@/components/ui';
 import { useSession } from '@/hooks/use-session';
 import { formatDay, formatTime, hoursLabel, localDate } from '@/lib/format';
 import { parseError, rpc, supabase } from '@/lib/supabase';
@@ -10,6 +10,10 @@ export type ShiftRow = {
   id: string; start_time: string; end_time: string; status: string; is_sleepover: boolean; ratio: string;
   approval_status: string; reject_reason: string | null; shift_publish_state: string | null; notes: string | null;
   sites: { name: string } | null;
+  // Present once the scheduler upgrade is in the database.
+  bonus_amount?: number | null;
+  planned_break_minutes?: number | null;
+  shift_types?: { name: string; colour: string } | null;
   shift_workers: { caregiver_id: string; clock_in_time: string | null; clock_out_time: string | null }[];
   shift_clients: { clients: { first_name: string; last_name: string; address: string | null } | null }[];
 };
@@ -17,6 +21,9 @@ export type ShiftRow = {
 export const SHIFT_SELECT =
   'id,start_time,end_time,status,is_sleepover,ratio,approval_status,reject_reason,shift_publish_state,notes,' +
   'sites(name),shift_workers(caregiver_id,clock_in_time,clock_out_time),shift_clients(clients(first_name,last_name,address))';
+
+/** Newer columns, asked for separately so the app keeps working against an older database. */
+export const SHIFT_SELECT_EXTRA = ',bonus_amount,planned_break_minutes,shift_types(name,colour)';
 
 export function clientNames(s: ShiftRow): string {
   return s.shift_clients.map((c) => `${c.clients?.first_name ?? ''} ${c.clients?.last_name ?? ''}`.trim()).filter(Boolean).join(', ');
@@ -43,9 +50,11 @@ export default function MyShifts() {
   const load = useCallback(async () => {
     const from = new Date(Date.now() - 36 * 3_600_000).toISOString();
     const to = new Date(Date.now() + 30 * 86_400_000).toISOString();
-    const { data, error } = await supabase
-      .from('shifts').select(SHIFT_SELECT).eq('deleted', false).neq('status', 'Cancelled')
+    const query = (cols: string) => supabase
+      .from('shifts').select(cols).eq('deleted', false).neq('status', 'Cancelled')
       .gte('end_time', from).lte('start_time', to).order('start_time');
+    let { data, error } = await query(SHIFT_SELECT + SHIFT_SELECT_EXTRA);
+    if (error) ({ data, error } = await query(SHIFT_SELECT));
     if (error) Alert.alert('Could not load shifts', error.message);
     const all = (data ?? []) as unknown as ShiftRow[];
     setRows(all.filter((s) => s.shift_workers.length > 0));
@@ -97,7 +106,7 @@ export default function MyShifts() {
         renderItem={({ item: s, section }) => {
           const mine = s.shift_workers.find((w) => w.caregiver_id === me?.caregiverId);
           return (
-            <Card style={{ marginBottom: 10 }}>
+            <Card style={{ marginBottom: 10, borderLeftWidth: s.shift_types ? 4 : undefined, borderLeftColor: s.shift_types?.colour }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: colors.text }}>
                   {formatDay(s.start_time, org.timezone)} {formatTime(s.start_time, org.timezone)}-{formatTime(s.end_time, org.timezone)}
@@ -108,6 +117,12 @@ export default function MyShifts() {
               <Muted>
                 {s.sites?.name ? `${s.sites.name} | ` : ''}{hoursLabel(s.start_time, s.end_time)}{s.is_sleepover ? ' | Sleepover' : ''}{s.shift_clients.length > 1 ? ` | ${s.shift_clients.length} clients` : ''}
               </Muted>
+              {(s.shift_types || Number(s.bonus_amount) > 0) && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                  {s.shift_types && <TypeTag name={s.shift_types.name} colour={s.shift_types.colour} />}
+                  {Number(s.bonus_amount) > 0 && <Pill text={`+$${Number(s.bonus_amount).toFixed(0)} bonus`} tone="ok" />}
+                </View>
+              )}
               {s.reject_reason && <Text style={{ color: colors.danger }}>Office: {s.reject_reason}</Text>}
               {'open' in section ? (
                 <Button title="Take this shift" onPress={() => accept(s)} style={{ marginTop: 6 }} />

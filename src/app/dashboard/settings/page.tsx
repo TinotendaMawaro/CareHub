@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ImageIcon, ShieldCheck, Upload } from "lucide-react";
 import { TotpEnrollPanel } from "@/components/auth/mfa-gate";
 import { RolesPanel } from "@/components/settings/roles-panel";
+import { ShiftTypesCard } from "@/components/settings/shift-types-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -164,6 +165,30 @@ function SettingsInner() {
               <label className="flex items-center gap-2 text-sm"><Checkbox disabled={ro} checked={draft.requireNoteOnEnd} onCheckedChange={(v) => set("requireNoteOnEnd", !!v)} />Require a shift note for every client before a shift can be ended</label>
             </CardContent>
           </Card>
+          <Card className="mt-4">
+            <CardHeader><CardTitle>Calendar</CardTitle><CardDescription>How shifts are picked and shown when rostering.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-w-xs">
+                <Label htmlFor="minute-interval">Time steps when picking shift times</Label>
+                <select
+                  id="minute-interval"
+                  disabled={ro}
+                  value={draft.minuteInterval}
+                  onChange={(e) => set("minuteInterval", Number(e.target.value) as 1 | 5 | 15)}
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value={15}>Every 15 minutes</option>
+                  <option value={5}>Every 5 minutes</option>
+                  <option value={1}>Every minute</option>
+                </select>
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <Checkbox disabled={ro} checked={draft.showTypeTags} onCheckedChange={(v) => set("showTypeTags", !!v)} />
+                <span><b>Show shift type colour tags on the calendar.</b><br /><span className="text-muted-foreground">Turn off for a calmer calendar. Types still show inside each shift.</span></span>
+              </label>
+            </CardContent>
+          </Card>
+          <div className="mt-4"><ShiftTypesCard canEdit={!ro} /></div>
         </TabsContent>
 
         <TabsContent value="invoicing">

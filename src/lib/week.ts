@@ -39,3 +39,22 @@ export function weekRangeLabel(monday: string): string {
   if (a.month !== b.month) return `${a.day} ${a.month} - ${b.day} ${b.month} ${y2}`;
   return `${a.day} - ${b.day} ${b.month} ${y2}`;
 }
+
+/** Six Monday-first weeks covering the month of `ymd` (days outside the month included, so the grid is always full). */
+export function monthGrid(ymd: string): string[][] {
+  const first = `${ymd.slice(0, 7)}-01`;
+  const start = mondayOf(first);
+  return Array.from({ length: 6 }, (_, w) => weekDays(addDays(start, w * 7)));
+}
+
+/** First day of the month `n` months from the month of `ymd`. */
+export function addMonths(ymd: string, n: number): string {
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(5, 7)) - 1 + n;
+  const d = new Date(Date.UTC(y, m, 1));
+  return d.toISOString().slice(0, 10);
+}
+
+export function monthLabel(ymd: string): string {
+  return `${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(ymd.slice(5, 7)) - 1]} ${ymd.slice(0, 4)}`;
+}

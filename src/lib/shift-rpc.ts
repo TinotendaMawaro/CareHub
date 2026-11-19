@@ -15,6 +15,27 @@ async function call<T = unknown>(fn: string, args: Record<string, unknown> = {})
 
 export type Scope = "this" | "following" | "all";
 
+export type NdisCancelReason = "health" | "family" | "transport" | "other";
+export const NDIS_CANCEL_REASONS: { value: NdisCancelReason; label: string }[] = [
+  { value: "health", label: "No show due to health reasons" },
+  { value: "family", label: "No show due to family issues" },
+  { value: "transport", label: "No show due to unavailability of transport" },
+  { value: "other", label: "Other" },
+];
+
+export type ShiftTask = { label: string; mandatory?: boolean };
+/** Only the keys you pass are changed. */
+export type ShiftDetails = Partial<{
+  shift_type_id: string | null;
+  bonus_amount: number;
+  planned_break_minutes: number;
+  break_paid: boolean;
+  address: string | null;
+  dropoff_address: string | null;
+  notes: string | null;
+  tasks: ShiftTask[];
+}>;
+
 export type ShiftBlock = {
   start_time: string; // "HH:MM" in the organisation's timezone
   end_time: string; // earlier than start_time means it ends the next day
@@ -74,7 +95,12 @@ export const shiftRpc = {
   addClient: (shiftId: string, clientId: string, scope: Scope = "this") =>
     call<{ added: number; skipped: unknown[] }>("add_shift_client", { p_shift: shiftId, p_client: clientId, p_scope: scope }),
   removeClient: (shiftId: string, clientId: string) => call<void>("remove_shift_client", { p_shift: shiftId, p_client: clientId }),
-  cancel: (ids: string[], reason: string | null, pay: boolean) => call<number>("cancel_shifts", { p_ids: ids, p_reason: reason, p_pay: pay }),
+  /** by "client" = client is billed and staff are paid; "provider" = no charge, no pay. */
+  cancel: (ids: string[], reason: string | null, by: "client" | "provider", opts: { ndisReason?: NdisCancelReason | null; notify?: boolean } = {}) =>
+    call<number>("cancel_shifts", { p_ids: ids, p_reason: reason, p_pay: by === "client", p_by: by, p_ndis_reason: opts.ndisReason ?? null, p_notify: !!opts.notify }),
+  rebook: (shiftId: string) => call<void>("rebook_shift", { p_shift: shiftId }),
+  setDetails: (ids: string[], details: ShiftDetails) => call<number>("set_shift_details", { p_ids: ids, p: details }),
+  completeTask: (taskId: string, done: boolean) => call<void>("complete_shift_task", { p_task: taskId, p_done: done }),
   remove: (shiftId: string, scope: Scope = "this") => call<number>("delete_shifts", { p_shift: shiftId, p_scope: scope }),
   publish: (shiftId: string) => call<void>("publish_shift", { p_shift: shiftId }),
   approve: (shiftId: string, useScheduled = false) => call<void>("approve_shift", { p_shift: shiftId, p_use_scheduled: useScheduled }),

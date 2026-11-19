@@ -920,3 +920,89 @@ describe('leave from the dashboard', () => {
     await rejects(as(db, U.office, () => db.query(`insert into public.time_off_requests (caregiver_id, start_date, end_date, leave_type) values ($1, '2034-03-01', '2034-03-01', 'Holiday')`, [CG.w3])), /leave_type_check/);
   });
 });
+
+describe('scheduler upgrades', () => {
+  const live = async (worker = CG.w1) => (await one(`insert into public.shifts (client_id, caregiver_id, start_time, end_time, support_family)
+    values ('${CL[0]}','${worker}', now() - interval '1 hour', now() + interval '2 hours','community') returning id`)).id;
+
+  test('office sets type, bonus, break, drop-off and tasks on many shifts at once; workers cannot', async () => {
+    const { shift_ids: ids } = await create({ client_ids: [CL[0]], worker_ids: [], date: '2035-01-08', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '12:00' }], repeat: { freq: 'daily', count: 2 } });
+    const type = await one(`select id from public.shift_types where name = 'Community access'`);
+    const n = await rpc(U.office, 'set_shift_details', [ids, { shift_type_id: type.id, bonus_amount: 25, planned_break_minutes: 30, break_paid: false, dropoff_address: 'Bondi Beach', tasks: [{ label: 'Give medication', mandatory: true }, { label: 'Tidy kitchen' }] }]);
+    assert.equal(n, 2);
+    const row = await one(`select shift_type_id, bonus_amount, planned_break_minutes, dropoff_address from public.shifts where id = $1`, [ids[1]]);
+    assert.equal(row.shift_type_id, type.id);
+    assert.equal(Number(row.bonus_amount), 25);
+    assert.equal(row.planned_break_minutes, 30);
+    assert.equal(row.dropoff_address, 'Bondi Beach');
+    assert.equal((await one(`select count(*)::int n from public.shift_tasks where shift_id = $1`, [ids[1]])).n, 2);
+    // replacing the list removes tasks that are no longer there
+    await rpc(U.office, 'set_shift_details', [[ids[0]], { tasks: [{ label: 'Give medication', mandatory: false }] }]);
+    const t = await q(`select label, mandatory from public.shift_tasks where shift_id = $1`, [ids[0]]);
+    assert.deepEqual(t.map((r) => [r.label, r.mandatory]), [['Give medication', false]]);
+    await rejects(rpc(U.office, 'set_shift_details', [ids, { bonus_amount: -5 }]), /invalid/);
+    await rejects(rpc(U.w1, 'set_shift_details', [ids, { bonus_amount: 5 }]), /forbidden/);
+  });
+
+  test('mandatory tasks block ending the shift until the worker ticks them off', async () => {
+    const s = await live(CG.w1);
+    await rpc(U.office, 'set_shift_details', [[s], { tasks: [{ label: 'Check blood sugar', mandatory: true }, { label: 'Optional walk' }] }]);
+    const task = await one(`select id from public.shift_tasks where shift_id = $1 and mandatory`, [s]);
+    await rejects(rpc(U.w1, 'complete_shift_task', [task.id, true]), /not_started/);
+    await rpc(U.w1, 'start_shift', [s, SYD.lat, SYD.lng]);
+    await rejects(rpc(U.w2, 'complete_shift_task', [task.id, true]), /not_assigned/);
+    await as(db, U.w1, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${CG.w1}','All good')`, [s]));
+    await rejects(rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]), /tasks_required: .*Check blood sugar/);
+    await rpc(U.w1, 'complete_shift_task', [task.id, true]);
+    const tasks = await as(db, U.w1, async () => (await db.query(`select label, done_at from public.shift_tasks where shift_id = $1`, [s])).rows);
+    assert.equal(tasks.length, 2, 'workers see the tasks on their shift');
+    await rpc(U.w1, 'end_shift', [s, SYD.lat, SYD.lng, 0]);
+  });
+
+  test('cancel by client bills and pays; cancel by us does neither; staff are notified; rebook restores', async () => {
+    const { shift_ids: [a, b] } = await create({ client_ids: [CL[1]], worker_ids: [CG.w2], date: '2035-02-05', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }, { start_time: '13:00', end_time: '14:00' }] });
+    const before = (await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.w2])).n;
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[a], 'Unwell', null, 'client', 'health', true]), 1);
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[b], 'Staff shortage', null, 'provider', null, false]), 1);
+    const ra = await one(`select status, cancel_pay, cancelled_by, cancel_ndis_reason from public.shifts where id = $1`, [a]);
+    const rb = await one(`select cancel_pay, cancelled_by from public.shifts where id = $1`, [b]);
+    assert.deepEqual([ra.status, ra.cancel_pay, ra.cancelled_by, ra.cancel_ndis_reason], ['Cancelled', true, 'client', 'health']);
+    assert.deepEqual([rb.cancel_pay, rb.cancelled_by], [false, 'provider']);
+    assert.equal((await one(`select count(*)::int n from public.notifications where user_id = $1`, [U.w2])).n, before + 1, 'only the notify=true cancel sends a message');
+    await rejects(rpc(U.office, 'cancel_shifts', [[a], null, null, 'nobody']), /invalid/);
+    // the old three-argument call still works
+    const { shift_ids: [c] } = await create({ client_ids: [CL[1]], worker_ids: [], date: '2035-02-06', support_family: 'community', blocks: [{ start_time: '09:00', end_time: '10:00' }] });
+    assert.equal(await rpc(U.office, 'cancel_shifts', [[c], 'old app', true]), 1);
+    assert.equal((await one(`select cancelled_by from public.shifts where id = $1`, [c])).cancelled_by, 'client');
+
+    await rpc(U.office, 'rebook_shift', [a]);
+    const back = await one(`select status, cancel_reason, cancelled_by, cancel_pay from public.shifts where id = $1`, [a]);
+    assert.deepEqual([back.status, back.cancel_reason, back.cancelled_by, back.cancel_pay], ['Scheduled', null, null, false]);
+    await rejects(rpc(U.office, 'rebook_shift', [a]), /only a cancelled shift/);
+    await rejects(rpc(U.w2, 'rebook_shift', [b]), /forbidden/);
+    const log = await q(`select action from public.activity_log where shift_id = $1 order by id`, [a]);
+    assert.deepEqual(log.map((r) => r.action).filter((x) => /cancel|rebook/.test(x)), ['shift_cancelled', 'shift_rebooked']);
+  });
+
+  test('a drop-off address skips the end-of-shift location check', async () => {
+    await db.query(`update public.organisation set enforce_geofence_on_end = true`);
+    try {
+      const s = await live(CG.w3);
+      await rpc(U.w3, 'start_shift', [s, SYD.lat, SYD.lng]);
+      await as(db, U.w3, () => db.query(`insert into public.shift_notes (shift_id, client_id, caregiver_id, note) values ($1,'${CL[0]}','${CG.w3}','Dropped at the shops')`, [s]));
+      await rejects(rpc(U.w3, 'end_shift', [s, SYD.lat + 0.05, SYD.lng, 0]), /outside_geofence/);
+      await rpc(U.office, 'set_shift_details', [[s], { dropoff_address: 'Westfield Bondi Junction' }]);
+      await rpc(U.w3, 'end_shift', [s, SYD.lat + 0.05, SYD.lng, 0]);
+    } finally {
+      await db.query(`update public.organisation set enforce_geofence_on_end = false`);
+    }
+  });
+
+  test('shift types: everyone can read them, only the office can change them', async () => {
+    const rows = await as(db, U.w1, async () => (await db.query(`select name from public.shift_types order by sort`)).rows);
+    assert.ok(rows.length >= 5 && rows[0].name === 'Standard');
+    await rejects(as(db, U.w1, () => db.query(`insert into public.shift_types (name, colour) values ('Mine', '#000000')`)), /row-level security/);
+    await as(db, U.office, () => db.query(`insert into public.shift_types (name, colour) values ('Respite', '#123ABC')`));
+    await rejects(as(db, U.office, () => db.query(`insert into public.shift_types (name, colour) values ('Bad', 'red')`)), /colour_check/);
+  });
+});

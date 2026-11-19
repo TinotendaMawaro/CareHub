@@ -35,7 +35,18 @@ import {
   Square as SquareIcon,
   UserSearch,
   Siren,
+  Car,
+  Receipt,
+  ListChecks,
+  Moon,
+  Gift,
+  Timer,
+  LogIn,
+  LogOut,
 } from "lucide-react";
+import { useShiftTypes } from "@/hooks/use-shift-types";
+import { useShiftExtras, type ShiftExtras } from "@/hooks/use-shift-extras";
+import { resolveShiftType } from "@/lib/shift-type";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +76,7 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose,
 } from "@/components/ui/sheet";
+import { CancelShiftDialog, type CancelChoice } from "@/components/shifts/cancel-shift-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -116,6 +128,8 @@ export type ColumnKey =
   | "status"
   | "approved"
   | "additionalInfo"
+  | "trackers"
+  | "address"
   | "actions";
 
 export type ColumnDef = {
@@ -159,8 +173,61 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "status", label: "Status", visible: true, width: 130 },
   { key: "approved", label: "Approved", visible: true, width: 90 },
   { key: "additionalInfo", label: "Additional information", visible: true, width: 160 },
+  { key: "trackers", label: "Trackers", visible: true, width: 130 },
+  { key: "address", label: "Address", visible: false, width: 180 },
   { key: "actions", label: "Actions", visible: true, width: 60 },
 ];
+const COLUMNS_KEY = "carehub-shift-columns";
+
+/** Saved column choices, merged with the defaults so newly added columns still appear. */
+function loadColumns(): ColumnDef[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY) ?? "null") as { key: ColumnKey; visible: boolean }[] | null;
+    if (!Array.isArray(saved)) return DEFAULT_COLUMNS;
+    const byKey = new Map(DEFAULT_COLUMNS.map((c) => [c.key, c]));
+    const ordered = saved.filter((s) => byKey.has(s.key)).map((s) => ({ ...byKey.get(s.key)!, visible: !!s.visible }));
+    const missing = DEFAULT_COLUMNS.filter((c) => !saved.some((s) => s.key === c.key));
+    const all = [...ordered, ...missing];
+    // keep select first and actions last whatever was saved
+    return [...all.filter((c) => c.key === "select"), ...all.filter((c) => c.key !== "select" && c.key !== "actions"), ...all.filter((c) => c.key === "actions")];
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+}
+
+/** Ends on a later calendar day than it starts (overnight / sleepover). */
+const endsNextDay = (s: Shift) => new Date(s.endTime).toDateString() !== new Date(s.startTime).toDateString();
+
+function Tracker({ on, warn, icon: Icon, label, children }: { on: boolean; warn?: boolean; icon: React.ElementType; label: string; children?: React.ReactNode }) {
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={cn(
+        "inline-flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border px-1 text-[11px] tabular-nums",
+        warn ? "border-amber-300 bg-amber-50 text-amber-700" : on ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-transparent text-slate-300",
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </span>
+  );
+}
+
+function Trackers({ x }: { x: ShiftExtras }) {
+  return (
+    <div className="flex items-center gap-1">
+      <Tracker on={x.notes > 0} icon={StickyNote} label={x.notes ? `${x.notes} note${x.notes === 1 ? "" : "s"}` : "No notes"}>{x.notes > 0 && x.notes}</Tracker>
+      <Tracker on={x.km > 0} icon={Car} label={x.km ? `${x.km.toFixed(1)} km travelled` : "No mileage"}>{x.km > 0 && Math.round(x.km)}</Tracker>
+      <Tracker on={x.expenses > 0} icon={Receipt} label={x.expenses ? `${x.expenses} expense${x.expenses === 1 ? "" : "s"}, $${x.expenseTotal.toFixed(2)}` : "No expenses"} />
+      {x.tasks > 0 && (
+        <Tracker on={x.tasksDone === x.tasks} warn={x.requiredOpen > 0} icon={ListChecks} label={`${x.tasksDone} of ${x.tasks} tasks done${x.requiredOpen ? `, ${x.requiredOpen} required still open` : ""}`}>
+          {x.tasksDone}/{x.tasks}
+        </Tracker>
+      )}
+    </div>
+  );
+}
 
 const PAGE_SIZES = [25, 50, 100] as const;
 type PageSize = (typeof PAGE_SIZES)[number];
@@ -181,11 +248,6 @@ function shiftHours(shift: Shift): number {
   return Math.max(0, (e.getTime() - s.getTime()) / 3_600_000);
 }
 
-function shiftTypeLabel(shift: Shift): ShiftType {
-  if (shift.isSleepover) return "Sleepover";
-  if (shift.supportFamily) return "Indirect";
-  return "On Site";
-}
 
 interface ShiftTableProps {
   shifts: Shift[];
@@ -193,7 +255,7 @@ interface ShiftTableProps {
   onStart?: (shift: Shift) => void;
   onStop?: (shift: Shift) => void;
   onApprove?: (shift: Shift) => void;
-  onCancel?: (shift: Shift, opts: { withoutPay: boolean; reason: string }) => void;
+  onCancel?: (shift: Shift, choice: CancelChoice) => void | Promise<void>;
   onEdit?: (shift: Shift) => void;
   onNotes?: (shift: Shift) => void;
   onIncidents?: (shift: Shift) => void;
@@ -202,7 +264,7 @@ interface ShiftTableProps {
   onBulkUnassign?: (ids: string[]) => void;
   onBulkChangeSupportItem?: (ids: string[], supportItem: string) => void;
   onBulkApprove?: (ids: string[]) => void;
-  onBulkCancel?: (ids: string[], withoutPay: boolean, reason: string) => void;
+  onBulkCancel?: (ids: string[], choice: CancelChoice) => void | Promise<void>;
   onBulkDelete?: (ids: string[]) => void;
   onBulkPublish?: (ids: string[]) => void;
 }
@@ -242,13 +304,18 @@ export default function ShiftTable({
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [columns, setColumns] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
+  const [typeFilter, setTypeFilter] = useState("");
+  const { types } = useShiftTypes();
+  React.useEffect(() => { setColumns(loadColumns()); }, []);
+  const columnsLoaded = React.useRef(false);
+  React.useEffect(() => {
+    // Skip the first run so the defaults never overwrite what was saved before loadColumns runs.
+    if (!columnsLoaded.current) { columnsLoaded.current = true; return; }
+    try { localStorage.setItem(COLUMNS_KEY, JSON.stringify(columns.map((c) => ({ key: c.key, visible: c.visible })))); } catch {}
+  }, [columns]);
   const [colSettingsOpen, setColSettingsOpen] = useState(false);
   const [cancelDialog, setCancelDialog] = useState<{ open: boolean; shift: Shift | null }>({ open: false, shift: null });
-  const [cancelWithoutPay, setCancelWithoutPay] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
-  const [bulkCancelWithoutPay, setBulkCancelWithoutPay] = useState(false);
-  const [bulkCancelReason, setBulkCancelReason] = useState("");
   const [assignDialog, setAssignDialog] = useState<{ open: boolean; shift: Shift | null }>({ open: false, shift: null });
   const [assignWorkerId, setAssignWorkerId] = useState("");
   const [assignOverrideReason, setAssignOverrideReason] = useState("");
@@ -396,9 +463,10 @@ export default function ShiftTable({
       const q = workerQ.trim().toLowerCase();
       result = result.filter((s) => (s.caregiverName ?? "").toLowerCase().includes(q));
     }
+    if (typeFilter) result = result.filter((s) => resolveShiftType(s, types).id === typeFilter);
     const dir = sortAsc ? 1 : -1;
     return [...result].sort((a, b) => dir * (new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
-  }, [shifts, globalQuery, dateFrom, dateTo, when, clientQ, workerQ, sortAsc]);
+  }, [shifts, globalQuery, dateFrom, dateTo, when, clientQ, workerQ, sortAsc, typeFilter, types]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
@@ -417,7 +485,8 @@ export default function ShiftTable({
   React.useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [globalQuery, dateFrom, dateTo, pageSize, when, clientQ, workerQ, sortAsc]);
+  }, [globalQuery, dateFrom, dateTo, pageSize, when, clientQ, workerQ, sortAsc, typeFilter]);
+  const extrasFor = useShiftExtras(React.useMemo(() => pageData.map((s) => s.id), [pageData]));
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -481,7 +550,7 @@ export default function ShiftTable({
             case "out":
               return formatTime(s.endTime);
             case "shiftType":
-              return shiftTypeLabel(s);
+              return resolveShiftType(s, types).name;
             case "participant":
               return s.clientName ?? "";
             case "supportWorker":
@@ -491,7 +560,7 @@ export default function ShiftTable({
             case "hours":
               return String(shiftHours(s));
             case "valueExGst":
-              return "";
+              return extrasFor(s.id).value ? extrasFor(s.id).value.toFixed(2) : "";
             case "status":
               return s.status ?? "";
             case "approved":
@@ -499,7 +568,13 @@ export default function ShiftTable({
             case "additionalInfo":
               return s.notes ?? "";
             case "flags":
-              return s.isSleepover ? "Sleepover" : "";
+              return [s.isSleepover && "Sleepover", s.bonusAmount && `Bonus $${s.bonusAmount}`, s.plannedBreakMinutes && `Break ${s.plannedBreakMinutes}m`].filter(Boolean).join("; ");
+            case "trackers": {
+              const x = extrasFor(s.id);
+              return [x.notes && `${x.notes} notes`, x.km && `${x.km} km`, x.expenses && `${x.expenses} expenses`, x.tasks && `tasks ${x.tasksDone}/${x.tasks}`].filter(Boolean).join("; ");
+            }
+            case "address":
+              return [s.address, s.dropoffAddress && `drop-off: ${s.dropoffAddress}`].filter(Boolean).join("; ");
             default:
               return "";
           }
@@ -522,22 +597,12 @@ export default function ShiftTable({
   };
 
   const openCancel = (shift: Shift) => setCancelDialog({ open: true, shift });
-  const confirmCancel = () => {
-    if (cancelDialog.shift && onCancel) {
-      onCancel(cancelDialog.shift, { withoutPay: cancelWithoutPay, reason: cancelReason });
-    }
-    setCancelDialog({ open: false, shift: null });
-    setCancelWithoutPay(false);
-    setCancelReason("");
+  const confirmCancel = async (choice: CancelChoice) => {
+    if (cancelDialog.shift && onCancel) await onCancel(cancelDialog.shift, choice);
   };
 
-  const confirmBulkCancel = () => {
-    if (onBulkCancel && selectedIds.size > 0) {
-      onBulkCancel(Array.from(selectedIds), bulkCancelWithoutPay, bulkCancelReason);
-    }
-    setBulkCancelOpen(false);
-    setBulkCancelWithoutPay(false);
-    setBulkCancelReason("");
+  const confirmBulkCancel = async (choice: CancelChoice) => {
+    if (onBulkCancel && selectedIds.size > 0) await onBulkCancel(Array.from(selectedIds), choice);
     setSelectedIds(new Set());
   };
 
@@ -606,8 +671,9 @@ export default function ShiftTable({
       case "flags":
         return (
           <div className="flex gap-1">
-            {shift.isSleepover && <Badge variant="outline" className="text-xs">Sleep</Badge>}
-            {shift.supportFamily && <Badge variant="outline" className="text-xs">Indirect</Badge>}
+            {shift.isSleepover && <span title="Sleepover" className="text-violet-600"><Moon className="h-4 w-4" /></span>}
+            {!!shift.bonusAmount && <span title={`$${shift.bonusAmount} bonus`} className="text-emerald-600"><Gift className="h-4 w-4" /></span>}
+            {!!shift.plannedBreakMinutes && <span title={`${shift.plannedBreakMinutes} min ${shift.breakPaid ? "paid" : "unpaid"} break`} className="text-slate-500"><Timer className="h-4 w-4" /></span>}
           </div>
         );
       case "date":
@@ -618,11 +684,46 @@ export default function ShiftTable({
           </span>
         );
       case "in":
-        return <span className="tabular-nums">{formatTime(shift.startTime)}</span>;
+        return (
+          <span className="flex flex-col tabular-nums">
+            {formatTime(shift.startTime)}
+            {shift.clockInTime && (
+              <span title="Clocked in" className="mt-0.5 inline-flex w-fit items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 text-[11px] text-emerald-700">
+                <LogIn className="h-3 w-3" />{formatTime(new Date(shift.clockInTime).toISOString())}
+              </span>
+            )}
+          </span>
+        );
       case "out":
-        return <span className="tabular-nums">{formatTime(shift.endTime)}</span>;
-      case "shiftType":
-        return <span className="whitespace-nowrap">{shiftTypeLabel(shift)}</span>;
+        return (
+          <span className="flex flex-col tabular-nums">
+            <span className="flex items-center gap-1">{endsNextDay(shift) && <Moon className="h-3 w-3 text-violet-500" aria-label="Next day" />}{formatTime(shift.endTime)}</span>
+            {endsNextDay(shift) && <span className="text-[11px] text-muted-foreground">{format(new Date(shift.endTime), "EEE d MMM")}</span>}
+            {shift.clockOutTime && (
+              <span title="Clocked out" className="mt-0.5 inline-flex w-fit items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 text-[11px] text-emerald-700">
+                <LogOut className="h-3 w-3" />{formatTime(new Date(shift.clockOutTime).toISOString())}
+              </span>
+            )}
+          </span>
+        );
+      case "shiftType": {
+        const t = resolveShiftType(shift, types);
+        return (
+          <span className="flex flex-col gap-1 whitespace-nowrap">
+            <span className="h-1 w-5 rounded-full" style={{ background: t.colour }} />
+            {t.name}
+          </span>
+        );
+      }
+      case "trackers":
+        return <Trackers x={extrasFor(shift.id)} />;
+      case "address":
+        return (
+          <span className="block max-w-[180px] text-xs">
+            <span className="block truncate" title={shift.address}>{shift.address ?? <span className="text-muted-foreground">Client&apos;s address</span>}</span>
+            {shift.dropoffAddress && <span className="block truncate text-muted-foreground" title={shift.dropoffAddress}>Drop-off: {shift.dropoffAddress}</span>}
+          </span>
+        );
       case "participant":
         return <span className="truncate block max-w-[160px]" title={shift.clientName}>{shift.clientName ?? "—"}</span>;
       case "supportWorker":
@@ -663,8 +764,10 @@ export default function ShiftTable({
         return <span className="truncate block max-w-[140px]" title={shift.supportFamily}>{shift.supportFamily ?? "—"}</span>;
       case "hours":
         return <span className="tabular-nums">{shiftHours(shift).toFixed(1)}</span>;
-      case "valueExGst":
-        return <span className="tabular-nums">—</span>;
+      case "valueExGst": {
+        const v = extrasFor(shift.id).value;
+        return <span className="tabular-nums">{v ? `$${v.toFixed(2)}` : "—"}</span>;
+      }
       case "status":
         return statusBadge(shift.status);
       case "approved":
@@ -950,12 +1053,14 @@ export default function ShiftTable({
                       <p className={cn("break-words text-sm", shift.caregiverId ? "text-muted-foreground" : "font-medium text-amber-700")}>
                         {shift.caregiverName ?? "Unassigned"}
                       </p>
-                      {(shift.isSleepover || shift.supportFamily) && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {shift.isSleepover && <Badge variant="outline" className="text-xs">Sleep</Badge>}
-                          {shift.supportFamily && <Badge variant="outline" className="text-xs">Indirect</Badge>}
-                        </div>
-                      )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        {(() => { const t = resolveShiftType(shift, types); return (
+                          <Badge variant="outline" className="gap-1 text-xs"><span className="h-2 w-2 rounded-full" style={{ background: t.colour }} />{t.name}</Badge>
+                        ); })()}
+                        {shift.isSleepover && <Badge variant="outline" className="text-xs">Sleep</Badge>}
+                        {!!shift.bonusAmount && <Badge variant="outline" className="border-emerald-300 text-xs text-emerald-700">${shift.bonusAmount} bonus</Badge>}
+                        {shift.clockInTime && <Badge variant="outline" className="text-xs">In {formatTime(new Date(shift.clockInTime).toISOString())}</Badge>}
+                      </div>
                     </button>
                   </div>
                 </React.Fragment>
@@ -1041,19 +1146,15 @@ export default function ShiftTable({
                       <Input placeholder="Filter staff" className="h-8 text-xs" value={workerQ} onChange={(e) => setWorkerQ(e.target.value)} aria-label="Filter by staff" />
                     )}
                     {col.key === "shiftType" && (
-                      <Select
-                        value=""
-                        onValueChange={(val) => {
-                          setGlobalQuery((q) => (q ? `${q} ${val}` : val));
-                        }}
-                      >
-                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Filter type" /></SelectTrigger>
+                      <Select value={typeFilter || "all"} onValueChange={(val) => setTypeFilter(val === "all" ? "" : val)}>
+                        <SelectTrigger className="h-8 text-xs" aria-label="Filter by shift type"><SelectValue placeholder="Filter type" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="On Site">On Site</SelectItem>
-                          <SelectItem value="Indirect">Indirect</SelectItem>
-                          <SelectItem value="Sleepover">Sleepover</SelectItem>
-                          <SelectItem value="Appointment">Appointment</SelectItem>
+                          <SelectItem value="all">All types</SelectItem>
+                          {types.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: t.colour }} />{t.name}</span>
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -1145,63 +1246,13 @@ export default function ShiftTable({
         </div>
       </div>
 
-      <AlertDialog open={cancelDialog.open} onOpenChange={(o) => !o && setCancelDialog({ open: false, shift: null })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel shift</AlertDialogTitle>
-            <AlertDialogDescription>
-              {cancelDialog.shift
-                ? `Cancel shift for ${cancelDialog.shift.clientName} on ${cancelDialog.shift.date}?`
-                : "Cancel the selected shift?"}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-3 py-4">
-            <div className="flex items-center gap-2">
-              <Checkbox id="without-pay" checked={cancelWithoutPay} onCheckedChange={(v) => setCancelWithoutPay(!!v)} />
-              <label htmlFor="without-pay" className="text-sm">Without pay</label>
-            </div>
-            <Input
-              placeholder="Cancellation reason (required)"
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Back</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCancel} disabled={!cancelReason.trim()}>
-              Cancel shift
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={bulkCancelOpen} onOpenChange={setBulkCancelOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel selected shifts</AlertDialogTitle>
-            <AlertDialogDescription>
-              {selectedIds.size} shift{selectedIds.size !== 1 ? "s" : ""} will be cancelled.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-3 py-4">
-            <div className="flex items-center gap-2">
-              <Checkbox id="bulk-without-pay" checked={bulkCancelWithoutPay} onCheckedChange={(v) => setBulkCancelWithoutPay(!!v)} />
-              <label htmlFor="bulk-without-pay" className="text-sm">Without pay</label>
-            </div>
-            <Input
-              placeholder="Cancellation reason (required)"
-              value={bulkCancelReason}
-              onChange={(e) => setBulkCancelReason(e.target.value)}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Back</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmBulkCancel} disabled={!bulkCancelReason.trim()}>
-              Cancel selected
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <CancelShiftDialog
+        open={cancelDialog.open}
+        summary={cancelDialog.shift ? `${cancelDialog.shift.clientName} on ${cancelDialog.shift.date}` : undefined}
+        onOpenChange={(o) => !o && setCancelDialog({ open: false, shift: null })}
+        onConfirm={confirmCancel}
+      />
+      <CancelShiftDialog open={bulkCancelOpen} count={selectedIds.size} onOpenChange={setBulkCancelOpen} onConfirm={confirmBulkCancel} />
 
       <AlertDialog open={assignDialog.open} onOpenChange={(o) => !o && setAssignDialog({ open: false, shift: null })}>
         <AlertDialogContent>

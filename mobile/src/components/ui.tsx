@@ -148,6 +148,16 @@ export function Pill({ text, tone = 'muted' }: { text: string; tone?: 'ok' | 'wa
   );
 }
 
+/** A shift type label with its colour dot. */
+export function TypeTag({ name, colour }: { name: string; colour: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: `${colour}66`, backgroundColor: `${colour}1a`, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colour }} />
+      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>{name}</Text>
+    </View>
+  );
+}
+
 export function Empty({ text }: { text: string }) {
   return <Text style={{ color: colors.muted, textAlign: 'center', padding: 32 }}>{text}</Text>;
 }

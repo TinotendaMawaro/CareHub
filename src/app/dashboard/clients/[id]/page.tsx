@@ -26,7 +26,7 @@ import { useClients } from "@/hooks/use-clients";
 import { useParticipantPlans, usePlanBudgets, useBudgetSummary, useExpensesNew, useBudgetAdjustments } from "@/hooks/use-budgets";
 import { useShifts } from "@/hooks/use-shifts";
 import ShiftTable from "@/components/scheduling/ShiftTable";
-import { ArrowLeft, Plus, Download } from "lucide-react";
+import { ArrowLeft, Plus, Download, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { downloadCsv } from "@/lib/csv";
 import type { ParticipantPlan, PlanBudget, BudgetSummary, NewExpense, BudgetAdjustment } from "@/lib/types";
@@ -96,6 +96,9 @@ export default function ClientProfilePage() {
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/print/calendar?kind=client&id=${client.id}`}><CalendarDays className="mr-1.5 h-4 w-4" />Print calendar</Link>
+          </Button>
           <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
             <SelectTrigger className="w-full sm:w-72">
               <SelectValue placeholder="Select plan" />

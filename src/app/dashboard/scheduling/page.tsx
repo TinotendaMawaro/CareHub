@@ -96,7 +96,7 @@ function SchedulingInner() {
               ? act("Shift ended", () => shiftRpc.adjust(s.id, s.caregiverId!, new Date(s.clockInTime!).toISOString(), new Date().toISOString()))
               : undefined}
             onApprove={approveOne}
-            onCancel={(s, o) => act("Shift cancelled", () => shiftRpc.cancel([s.id], o.reason || null, !o.withoutPay))}
+            onCancel={(s, c) => act("Shift cancelled", () => shiftRpc.cancel([s.id], c.reason, c.by, { ndisReason: c.ndisReason, notify: c.notify }))}
             onBulkApprove={(ids) => act("Approval finished", async () => {
               const r = await shiftRpc.approveMany(ids);
               if (r.failed.length) throw new Error(`${r.approved} approved, ${r.failed.length} could not be: ${r.failed[0].error}`);
@@ -108,7 +108,7 @@ function SchedulingInner() {
                 for (const w of s?.workerIds ?? (s?.caregiverId ? [s.caregiverId] : [])) await shiftRpc.removeWorker(id, w);
               }
             })}
-            onBulkCancel={(ids, withoutPay, reason) => act("Shifts cancelled", () => shiftRpc.cancel(ids, reason || null, !withoutPay))}
+            onBulkCancel={(ids, c) => act("Shifts cancelled", () => shiftRpc.cancel(ids, c.reason, c.by, { ndisReason: c.ndisReason, notify: c.notify }))}
             onBulkDelete={(ids) => {
               if (!window.confirm(`Delete ${ids.length} shift(s)? Started or approved shifts are kept.`)) return;
               void act("Shifts deleted", async () => { for (const id of ids) await shiftRpc.remove(id); });

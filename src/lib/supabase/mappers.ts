@@ -209,6 +209,14 @@ export function mapShift(r: any, clients: Client[] = [], caregivers: Caregiver[]
     deleted: !!r.deleted,
     supportFamily: r.support_family ?? undefined,
     isSleepover: !!r.is_sleepover,
+    shiftTypeId: optStr(r.shift_type_id),
+    bonusAmount: Number(r.bonus_amount ?? 0),
+    plannedBreakMinutes: Number(r.planned_break_minutes ?? 0),
+    breakPaid: !!r.break_paid,
+    address: optStr(r.address),
+    dropoffAddress: optStr(r.dropoff_address),
+    cancelledBy: r.cancelled_by ?? undefined,
+    cancelNdisReason: r.cancel_ndis_reason ?? undefined,
     ...shiftNames(r, clients, caregivers),
   };
 }

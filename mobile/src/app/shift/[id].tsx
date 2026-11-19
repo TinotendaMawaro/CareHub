@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
-import { Banner, Button, Card, H1, Input, Label, Muted, Pill, Screen, colors } from '@/components/ui';
+import { Banner, Button, Card, H1, Input, Label, Muted, Pill, Screen, TypeTag, colors } from '@/components/ui';
 import { DocRow } from '@/components/documents';
 import { useSession } from '@/hooks/use-session';
 import { DOC_SELECT, type Doc } from '@/lib/documents';
@@ -16,7 +16,18 @@ type Shift = {
   sites: { name: string; address: string | null } | null;
   shift_clients: { clients: Client | null }[];
   shift_workers: { caregiver_id: string; clock_in_time: string | null; clock_out_time: string | null; hours_worked: number | null }[];
+  cancel_reason?: string | null;
+  // Present once the scheduler upgrade is in the database.
+  bonus_amount?: number | null;
+  planned_break_minutes?: number | null;
+  break_paid?: boolean | null;
+  address?: string | null;
+  dropoff_address?: string | null;
+  cancelled_by?: 'client' | 'provider' | null;
+  shift_types?: { name: string; colour: string } | null;
+  shift_tasks?: Task[];
 };
+type Task = { id: string; label: string; mandatory: boolean; done_at: string | null; sort: number };
 type Note = { id: string; client_id: string; note: string; category: string; follow_up: boolean; timestamp: string };
 
 const CATEGORIES = ['general', 'medication', 'mood', 'meal', 'activity', 'health', 'handover'] as const;
@@ -32,11 +43,20 @@ async function currentPosition(): Promise<{ lat: number; lng: number; accuracy: 
   }
 }
 
+const BASE = 'id,start_time,end_time,status,is_sleepover,ratio,notes,approval_status,reject_reason,approved_at,geofence_required,cancel_reason,sites(name,address),shift_clients(clients(id,first_name,last_name,address,allergies,care_plan,emergency_contact,phone)),shift_workers(caregiver_id,clock_in_time,clock_out_time,hours_worked)';
+const EXTRA = ',bonus_amount,planned_break_minutes,break_paid,address,dropoff_address,cancelled_by,shift_types(name,colour),shift_tasks(id,label,mandatory,done_at,sort)';
+
+/** Asks for the newer columns first and falls back, so the app keeps working against an older database. */
+async function fetchShiftRow(id: string) {
+  const full = await supabase.from('shifts').select(BASE + EXTRA).eq('id', id).maybeSingle();
+  return full.error ? supabase.from('shifts').select(BASE).eq('id', id).maybeSingle() : full;
+}
+
+const mapsUrl = (address: string) => `https://maps.google.com/?q=${encodeURIComponent(address)}`;
+
 const fetchShift = (id: string, caregiverId: string) =>
   Promise.all([
-    supabase.from('shifts')
-      .select('id,start_time,end_time,status,is_sleepover,ratio,notes,approval_status,reject_reason,approved_at,geofence_required,sites(name,address),shift_clients(clients(id,first_name,last_name,address,allergies,care_plan,emergency_contact,phone)),shift_workers(caregiver_id,clock_in_time,clock_out_time,hours_worked)')
-      .eq('id', id).maybeSingle(),
+    fetchShiftRow(id),
     supabase.from('shift_team').select('caregiver_id,name,role').eq('shift_id', id),
     supabase.from('shift_notes').select('id,client_id,note,category,follow_up,timestamp').eq('shift_id', id).eq('caregiver_id', caregiverId).order('timestamp', { ascending: false }),
     // Row level security limits this to participants this worker supports.
@@ -54,6 +74,8 @@ export default function ShiftScreen() {
   const [busy, setBusy] = useState<'start' | 'end' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [brk, setBrk] = useState('0');
+  const [brkTouched, setBrkTouched] = useState(false);
+  const [taskBusy, setTaskBusy] = useState<string | null>(null);
 
   const caregiverId = me?.caregiverId ?? '';
   const apply = useCallback(([s, t, n, d]: Awaited<ReturnType<typeof fetchShift>>) => {
@@ -69,6 +91,10 @@ export default function ShiftScreen() {
     void fetchShift(id, caregiverId).then((r) => { if (alive) apply(r); });
     return () => { alive = false; };
   }, [id, caregiverId, apply]);
+
+  // The planned unpaid break is filled in until the worker types their own.
+  const plannedUnpaid = shift && !shift.break_paid ? Number(shift.planned_break_minutes ?? 0) : 0;
+  const breakValue = !brkTouched && plannedUnpaid > 0 ? String(plannedUnpaid) : brk;
 
   const mine = shift?.shift_workers.find((w) => w.caregiver_id === me?.caregiverId);
   const locked = !!shift?.approved_at;
@@ -90,7 +116,7 @@ export default function ShiftScreen() {
 
   async function finish() {
     setError(null);
-    const minutes = Math.max(0, parseInt(brk, 10) || 0);
+    const minutes = Math.max(0, parseInt(breakValue, 10) || 0);
     setBusy('end');
     try {
       const pos = await currentPosition();
@@ -104,6 +130,19 @@ export default function ShiftScreen() {
     }
   }
 
+  async function toggleTask(t: Task) {
+    setError(null);
+    setTaskBusy(t.id);
+    try {
+      await rpc('complete_shift_task', { p_task: t.id, p_done: !t.done_at });
+      await load();
+    } catch (e) {
+      setError(parseError(e).message);
+    } finally {
+      setTaskBusy(null);
+    }
+  }
+
   function confirmEnd() {
     Alert.alert('End this shift?', 'Make sure your notes are written. You cannot undo this.', [
       { text: 'Not yet', style: 'cancel' }, { text: 'End shift', style: 'destructive', onPress: () => void finish() },
@@ -114,7 +153,11 @@ export default function ShiftScreen() {
 
   const started = !!mine?.clock_in_time;
   const ended = !!mine?.clock_out_time;
-  const address = shift.sites?.address ?? clients[0]?.address ?? null;
+  const address = shift.address ?? shift.sites?.address ?? clients[0]?.address ?? null;
+  const tasks = [...(shift.shift_tasks ?? [])].sort((a, b) => a.sort - b.sort);
+  const openRequired = tasks.filter((t) => t.mandatory && !t.done_at).length;
+  const cancelled = shift.status === 'Cancelled';
+  const plannedBreak = Number(shift.planned_break_minutes ?? 0);
 
   return (
     <Screen>
@@ -122,20 +165,62 @@ export default function ShiftScreen() {
         <View style={{ gap: 4 }}>
           <H1>{formatDay(shift.start_time, org.timezone)}, {formatTime(shift.start_time, org.timezone)}-{formatTime(shift.end_time, org.timezone)}</H1>
           <Muted>{hoursLabel(shift.start_time, shift.end_time)} | {shift.is_sleepover ? 'Sleepover' : 'Active'} | ratio {shift.ratio}</Muted>
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-            {ended ? <Pill text="You finished" tone="ok" /> : started ? <Pill text="In progress" tone="brand" /> : <Pill text={shift.status} tone="muted" />}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {shift.shift_types && <TypeTag name={shift.shift_types.name} colour={shift.shift_types.colour} />}
+            {ended ? <Pill text="You finished" tone="ok" /> : started ? <Pill text="In progress" tone="brand" /> : <Pill text={shift.status} tone={cancelled ? 'danger' : 'muted'} />}
             {locked && <Pill text="Approved" tone="ok" />}
+            {Number(shift.bonus_amount) > 0 && <Pill text={`+$${Number(shift.bonus_amount).toFixed(0)} bonus`} tone="ok" />}
           </View>
+          {plannedBreak > 0 && <Muted>Includes a {plannedBreak} minute {shift.break_paid ? 'paid' : 'unpaid'} break.</Muted>}
         </View>
 
+        {cancelled && (
+          <Banner text={`This shift was cancelled${shift.cancel_reason ? `: ${shift.cancel_reason}` : '.'}${shift.cancelled_by === 'client' ? ' You will still be paid for it.' : ''}`} />
+        )}
         {shift.reject_reason && <Banner tone="warn" text={`The office sent this back: ${shift.reject_reason}`} />}
-        {shift.notes && <Banner tone="warn" text={`Note from the office: ${shift.notes}`} />}
+        {shift.notes && <Banner tone="warn" text={`Instructions: ${shift.notes}`} />}
 
         {address && (
           <Card>
-            <Label>Where</Label>
+            <Label>{shift.dropoff_address ? 'Start at' : 'Where'}</Label>
             <Text style={{ color: colors.text }}>{shift.sites?.name ? `${shift.sites.name}, ` : ''}{address}</Text>
-            <Button title="Open in Maps" kind="outline" onPress={() => void Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)} />
+            <Button title="Open in Maps" kind="outline" onPress={() => void Linking.openURL(mapsUrl(address))} />
+            {shift.dropoff_address && (
+              <View style={{ marginTop: 10, gap: 6 }}>
+                <Label>Finish at (drop-off)</Label>
+                <Text style={{ color: colors.text }}>{shift.dropoff_address}</Text>
+                <Muted>You can end the shift wherever you drop the client off.</Muted>
+                {shift.dropoff_address !== 'To be confirmed' && (
+                  <Button title="Drop-off in Maps" kind="outline" onPress={() => void Linking.openURL(mapsUrl(shift.dropoff_address!))} />
+                )}
+              </View>
+            )}
+          </Card>
+        )}
+
+        {tasks.length > 0 && (
+          <Card>
+            <Label>Tasks ({tasks.filter((t) => t.done_at).length} of {tasks.length} done)</Label>
+            {tasks.map((t) => {
+              const canTick = started && !ended && !locked;
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => canTick && void toggleTask(t)}
+                  disabled={!canTick || taskBusy === t.id}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: !!t.done_at, disabled: !canTick }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, opacity: taskBusy === t.id ? 0.5 : 1 }}
+                >
+                  <View style={{ width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: t.done_at ? colors.ok : colors.muted, backgroundColor: t.done_at ? colors.ok : '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                    {t.done_at && <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>✓</Text>}
+                  </View>
+                  <Text style={{ flex: 1, color: colors.text, textDecorationLine: t.done_at ? 'line-through' : 'none' }}>{t.label}</Text>
+                  {t.mandatory && !t.done_at && <Pill text="Required" tone="warn" />}
+                </Pressable>
+              );
+            })}
+            {!started && <Muted>Start the shift to tick tasks off.</Muted>}
           </Card>
         )}
 
@@ -149,9 +234,9 @@ export default function ShiftScreen() {
         {error && <Banner text={error} />}
 
         {!started && !ended && (
-          <Button title="Start shift" onPress={start} loading={busy === 'start'} disabled={shift.status === 'Cancelled'} />
+          <Button title="Start shift" onPress={start} loading={busy === 'start'} disabled={cancelled} />
         )}
-        {!started && !ended && shift.geofence_required !== false && (
+        {!started && !ended && !cancelled && shift.geofence_required !== false && (
           <Muted>Starting needs your location: you must be at the client&apos;s address.</Muted>
         )}
 
@@ -167,8 +252,10 @@ export default function ShiftScreen() {
         {started && !ended && (
           <Card>
             <Label>Unpaid break taken (minutes)</Label>
-            <Input value={brk} onChangeText={setBrk} keyboardType="number-pad" style={{ width: 120 }} />
-            <Button title="End shift" kind="danger" onPress={confirmEnd} loading={busy === 'end'} style={{ marginTop: 8 }} />
+            <Input value={breakValue} onChangeText={(v) => { setBrkTouched(true); setBrk(v); }} keyboardType="number-pad" style={{ width: 120 }} />
+            {plannedBreak > 0 && shift.break_paid && <Muted>Your {plannedBreak} minute break is paid, so leave this at 0 unless you took extra unpaid time.</Muted>}
+            {openRequired > 0 && <Banner tone="warn" text={`Tick off ${openRequired} required task${openRequired === 1 ? '' : 's'} before ending the shift.`} />}
+            <Button title="End shift" kind="danger" onPress={confirmEnd} loading={busy === 'end'} disabled={openRequired > 0} style={{ marginTop: 8 }} />
           </Card>
         )}
         {ended && <Banner tone="ok" text={`You worked ${Number(mine?.hours_worked ?? 0).toFixed(2)} hours on this shift.`} />}

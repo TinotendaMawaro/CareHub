@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Moon, Plus, Search, UserX } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { CalendarDays, ChevronLeft, ChevronRight, Gift, GripVertical, Moon, Plus, Rows3, Search, UserX } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,6 +13,8 @@ import { useCaregivers } from "@/hooks/use-caregivers";
 import { useClients } from "@/hooks/use-clients";
 import { useOrganisation } from "@/hooks/use-organisation";
 import { useShifts } from "@/hooks/use-shifts";
+import { useShiftTypes } from "@/hooks/use-shift-types";
+import { resolveShiftType } from "@/lib/shift-type";
 import { useToast } from "@/hooks/use-toast";
 import { initials } from "@/lib/avatar";
 import { formatTime, isoToZonedInput } from "@/lib/format";
@@ -33,6 +36,19 @@ const STATUS_STYLE: Record<string, string> = {
   "No Show": "border-l-red-500 bg-red-50 text-red-950 dark:bg-red-950/40 dark:text-red-100",
   Cancelled: "border-l-slate-300 bg-slate-50 text-slate-400 line-through",
 };
+// Cancellations look different depending on who pays: the client is still billed (amber), or nobody is (orange, struck through).
+const CANCEL_STYLE = {
+  client: "border-l-amber-400 bg-amber-100/80 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100",
+  provider: "border-l-orange-400 bg-orange-50 text-orange-800 line-through decoration-orange-400/70 dark:bg-orange-950/40 dark:text-orange-200",
+};
+const LEGEND: [string, string][] = [
+  ["Scheduled", STATUS_STYLE.Scheduled], ["In Progress", STATUS_STYLE["In Progress"]], ["Completed", STATUS_STYLE.Completed],
+  ["Late", STATUS_STYLE.Late], ["No Show", STATUS_STYLE["No Show"]],
+  ["Cancelled by client (billed)", CANCEL_STYLE.client], ["Cancelled by us (no charge)", CANCEL_STYLE.provider],
+];
+const chipStyle = (s: Shift) =>
+  s.status === "Cancelled" ? CANCEL_STYLE[s.cancelledBy ?? (s.cancelPay ? "client" : "provider")] : STATUS_STYLE[s.status] ?? STATUS_STYLE.Scheduled;
+const COMPACT_KEY = "carehub-board-compact";
 
 const hours = (s: Shift) => Math.max(0, (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 3_600_000);
 const locked = (s: Shift) => !!s.approvedAt || !!s.clockInTime || s.status === "Cancelled" || s.status === "Completed" || s.status === "In Progress";
@@ -51,6 +67,11 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
   const { shifts, loading } = useShifts();
   const { caregivers } = useCaregivers();
   const { clients } = useClients();
+  const { types } = useShiftTypes();
+  const showTags = org.showTypeTags;
+  const [compact, setCompact] = useState(false);
+  useEffect(() => { try { setCompact(localStorage.getItem(COMPACT_KEY) === "1"); } catch {} }, []);
+  const toggleCompact = () => setCompact((c) => { try { localStorage.setItem(COMPACT_KEY, c ? "0" : "1"); } catch {} return !c; });
   const today = isoToZonedInput(new Date(), tz).slice(0, 10);
 
   const [mode, setMode] = useState<BoardMode>(defaultMode);
@@ -181,6 +202,9 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
             <Input className="h-9 w-48 pl-8" placeholder={mode === "staff" ? "Find staff" : "Find client"} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <label className="flex items-center gap-2 text-sm text-muted-foreground"><Checkbox checked={hideEmpty} onCheckedChange={(v) => setHideEmpty(!!v)} />Only rostered</label>
+          <Button variant={compact ? "secondary" : "ghost"} size="sm" aria-pressed={compact} onClick={toggleCompact} title="Fit more on screen">
+            <Rows3 className="mr-1 h-4 w-4" />Compact
+          </Button>
           <div className="inline-flex rounded-lg border bg-muted/40 p-0.5" role="tablist" aria-label="Rows">
             {(["staff", "client"] as const).map((m) => (
               <button
@@ -235,10 +259,20 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                             <AvatarFallback className="text-xs">{initials(row.name)}</AvatarFallback>
                           </Avatar>
                         )}
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="truncate font-medium" title={row.name}>{row.name}</p>
                           {row.sub && <p className="truncate text-xs text-muted-foreground">{row.sub}</p>}
                         </div>
+                        {!isUnassigned && (
+                          <Link
+                            href={`/print/calendar?kind=${mode}&id=${row.id}&month=${monday.slice(0, 7)}`}
+                            aria-label={`Printable calendar for ${row.name}`}
+                            title="Printable month calendar"
+                            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover/row:opacity-100 sm:flex"
+                          >
+                            <CalendarDays className="h-3.5 w-3.5" />
+                          </Link>
+                        )}
                       </div>
                     </td>
                     {days.map((d) => {
@@ -251,14 +285,16 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                           onDragLeave={() => setDropKey((k) => (k === key ? null : k))}
                           onDrop={onDrop(row.id, d)}
                           className={cn(
-                            "group/cell relative h-[72px] border-b border-r p-1 align-top transition-colors",
+                            "group/cell relative border-b border-r p-1 align-top transition-colors",
+                            compact ? "h-11" : "h-[72px]",
                             d === today && "bg-primary/[0.03]",
                             dropKey === key && "bg-primary/10 ring-2 ring-inset ring-primary/40",
                           )}
                         >
-                          <div className="space-y-1">
+                          <div className={compact ? "space-y-0.5" : "space-y-1"}>
                             {cell.map((s) => {
                               const canDrag = !locked(s);
+                              const type = resolveShiftType(s, types);
                               return (
                                 <button
                                   key={s.id}
@@ -267,23 +303,30 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
                                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", `${s.id}|${row.id}`); e.dataTransfer.effectAllowed = "move"; setDragId(s.id); }}
                                   onDragEnd={() => { setDragId(null); setDropKey(null); }}
                                   onClick={() => setOpenId(s.id)}
-                                  title={`${formatTime(s.startTime, tz)}-${formatTime(s.endTime, tz)} · ${chipLabel(s, row.id)} · ${s.status}`}
+                                  title={`${formatTime(s.startTime, tz)}-${formatTime(s.endTime, tz)} · ${type.name} · ${chipLabel(s, row.id)} · ${s.status}${s.status === "Cancelled" ? (s.cancelledBy === "client" || (!s.cancelledBy && s.cancelPay) ? " (client billed)" : " (no charge)") : ""}${s.bonusAmount ? ` · $${s.bonusAmount} bonus` : ""}`}
                                   className={cn(
-                                    "group/chip relative flex w-full items-start gap-1 rounded-md border border-l-4 px-1.5 py-1 text-left text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow-md",
-                                    STATUS_STYLE[s.status] ?? STATUS_STYLE.Scheduled,
+                                    "group/chip relative flex w-full items-start gap-1 rounded-md border border-l-4 px-1.5 text-left text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow-md",
+                                    compact ? "py-0.5" : "py-1",
+                                    chipStyle(s),
                                     isUnassigned && "border-l-amber-500 bg-amber-50 text-amber-950",
                                     canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                                     dragId === s.id && "opacity-40",
                                     busyId === s.id && "animate-pulse",
                                   )}
                                 >
-                                  {canDrag && <GripVertical className="absolute right-0.5 top-1 h-3 w-3 opacity-0 transition-opacity group-hover/chip:opacity-50" />}
-                                  <span className="min-w-0 flex-1">
+                                  {showTags && (
+                                    <span aria-hidden className="absolute right-1 top-1 h-1.5 w-4 rounded-full" style={{ background: type.colour }} />
+                                  )}
+                                  {canDrag && <GripVertical className={cn("absolute right-0.5 h-3 w-3 opacity-0 transition-opacity group-hover/chip:opacity-50", showTags ? "top-3" : "top-1")} />}
+                                  <span className="min-w-0 flex-1 pr-4">
                                     <span className="flex flex-wrap items-center gap-x-1 font-semibold tabular-nums">
                                       {formatTime(s.startTime, tz)}-{formatTime(s.endTime, tz)}
                                       {s.isSleepover && <Moon className="h-3 w-3" aria-label="Sleepover" />}
+                                      {!!s.bonusAmount && <Gift className="h-3 w-3 text-emerald-600" aria-label={`${s.bonusAmount} dollar bonus`} />}
+                                      {compact && <span className="truncate font-normal opacity-80">{chipLabel(s, row.id)}</span>}
                                     </span>
-                                    <span className="block truncate opacity-80">{chipLabel(s, row.id)}</span>
+                                    {!compact && <span className="block truncate opacity-60">{type.name}</span>}
+                                    {!compact && <span className="block truncate font-medium opacity-90">{chipLabel(s, row.id)}</span>}
                                   </span>
                                 </button>
                               );
@@ -335,8 +378,11 @@ export function ShiftBoard({ defaultMode = "staff", title, description }: { defa
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {Object.keys(STATUS_STYLE).map((k) => (
-          <span key={k} className="flex items-center gap-1.5"><span className={cn("h-3.5 w-6 rounded-sm border border-l-4", STATUS_STYLE[k])} />{k}</span>
+        {LEGEND.map(([k, cls]) => (
+          <span key={k} className="flex items-center gap-1.5"><span className={cn("h-3.5 w-6 rounded-sm border border-l-4", cls)} />{k}</span>
+        ))}
+        {showTags && types.map((t) => (
+          <span key={t.id} className="flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full" style={{ background: t.colour }} />{t.name}</span>
         ))}
         <span className="ml-auto">Drag a shift to another person or day. Click a shift to edit it.</span>
       </div>

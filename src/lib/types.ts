@@ -92,7 +92,17 @@ export type Shift = {
   clientName?: string;
   caregiverName?: string;
   shiftPublishState?: 'offered' | 'viewed' | 'accepted' | 'declined';
+  shiftTypeId?: string;
+  bonusAmount?: number;
+  plannedBreakMinutes?: number;
+  breakPaid?: boolean;
+  address?: string;
+  dropoffAddress?: string;
+  cancelledBy?: 'client' | 'provider';
+  cancelNdisReason?: 'health' | 'family' | 'transport' | 'other';
 };
+
+export type ShiftType = { id: string; name: string; colour: string; isDefault: boolean; sort: number };
 
 export type IncidentReport = {
   id: string;
@@ -522,6 +532,8 @@ export type Organisation = {
   clockInEarlyMinutes: number;
   requireNoteOnEnd: boolean;
   requireMfa: boolean;
+  minuteInterval: 1 | 5 | 15;
+  showTypeTags: boolean;
 };
 
 export type Invoice = {

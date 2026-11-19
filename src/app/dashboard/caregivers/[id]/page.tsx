@@ -21,7 +21,7 @@ import { mapTimesheetTotal } from "@/lib/supabase/mappers";
 import { useShifts } from "@/hooks/use-shifts";
 import ShiftTable from "@/components/scheduling/ShiftTable";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import Link from "next/link";
 
 export default function CaregiverProfilePage() {
@@ -71,7 +71,12 @@ export default function CaregiverProfilePage() {
             <p className="text-sm text-muted-foreground">Staff profile</p>
           </div>
         </div>
-        <Badge variant="outline">{caregiver.availability}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{caregiver.availability}</Badge>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/print/calendar?kind=staff&id=${caregiver.id}`}><CalendarDays className="mr-1.5 h-4 w-4" />Print calendar</Link>
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="timesheets" className="space-y-4">
